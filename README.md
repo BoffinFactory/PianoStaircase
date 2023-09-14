@@ -1,2 +1,2 @@
-# PianoStaircase
-Boffin build project: piano staircase
+# Piano Staircase
+A Boffin build project
