@@ -1,6 +1,6 @@
 ## Project Meeting
 
-**Thursday, October 21st at 5:00 PM in Russ 355**
+**Thursday, September 21st at 5:00 PM in Russ 355**
 
 ## The Goal
 
