@@ -27,7 +27,7 @@ In our first meeting we will outline projects details, break the project into sp
 
 # What Students Get:
 
-- experience with tools throughout the sprints above
+- mentorship & experience using tools throughout the sprints above
 - a unique token of participation in this Boffin Build Project
 - connection with career services to write their experience into resumes
 
