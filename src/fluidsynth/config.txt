@@ -1,0 +1,9 @@
+echo "Loading Config JPB v0.1"
+gain 5
+select 1 1 0 69
+select 2 1 0 70
+select 3 1 0 105
+select 4 1 0 114
+select 5 1 0 115
+select 6 1 128 48
+channels
