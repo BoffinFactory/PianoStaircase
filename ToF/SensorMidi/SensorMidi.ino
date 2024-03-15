@@ -1,4 +1,7 @@
 #include "Adafruit_VL53L0X.h"
+#include "MIDIUSB.h"
+#include "PitchToNote.h"
+#define NUM_SENSORS  2
 
 // address we will assign if dual sensor is present
 #define LOX1_ADDRESS 0x30
@@ -15,6 +18,16 @@ Adafruit_VL53L0X lox2 = Adafruit_VL53L0X();
 // this holds the measurement
 VL53L0X_RangingMeasurementData_t measure1;
 VL53L0X_RangingMeasurementData_t measure2;
+
+//MIDI stuff
+const uint8_t sensor1 = 5;
+const uint8_t sensor2 = 6;
+const uint8_t sensor[NUM_SENSORS] = {sensor1, sensor2};
+const byte notePitches[NUM_SENSORS] = {C3, D3};
+uint8_t notesTime[NUM_SENSORS];
+uint8_t pressedSensors = 0x00;
+uint8_t previousSensors = 0x00;
+uint8_t intensity;
 
 /*
     Reset all sensors by setting all of their XSHUT pins low for delay(10), then set all XSHUT high to bring out of reset
@@ -56,6 +69,39 @@ void setID() {
   }
 }
 
+void readIntensity()
+{
+  intensity=127;
+}
+
+void playNotes()
+{
+  for (int i = 0; i < NUM_SENSORS; i++){
+    if (bitRead(pressedSensors, i) != bitRead(previousSensors, i)){
+      if (bitRead(pressedSensors, i)){
+        bitWrite(previousSensors, i , 1);
+        noteOn(0, notePitches[i], intensity);
+        MidiUSB.flush();
+      } else {
+        bitWrite(previousSensors, i , 0);
+        noteOff(0, notePitches[i], 0);
+        MidiUSB.flush();
+      }
+    }
+  }
+}
+
+void noteOn(byte channel, byte pitch, byte velocity) {
+  midiEventPacket_t noteOn = {0x09, 0x90 | channel, pitch, velocity};
+  MidiUSB.sendMIDI(noteOn);
+}
+
+void noteOff(byte channel, byte pitch, byte velocity) {
+  midiEventPacket_t noteOff = {0x08, 0x80 | channel, pitch, velocity};
+  MidiUSB.sendMIDI(noteOff);
+}
+
+
 void read_dual_sensors() {
   
   lox1.rangingTest(&measure1, false); // pass in 'true' to get debug data printout!
@@ -65,6 +111,8 @@ void read_dual_sensors() {
   Serial.print(F("1: "));
   if(measure1.RangeStatus != 4) {     // if not out of range
     Serial.print(measure1.RangeMilliMeter);
+    bitWrite(pressedSensors, 1, 1);
+    delay(50);
   } else {
     Serial.print(F("Out of range"));
   }
@@ -75,6 +123,8 @@ void read_dual_sensors() {
   Serial.print(F("2: "));
   if(measure2.RangeStatus != 4) {
     Serial.print(measure2.RangeMilliMeter);
+    bitWrite(pressedSensors, 1, 1);
+    delay(50);
   } else {
     Serial.print(F("Out of range"));
   }
@@ -84,28 +134,26 @@ void read_dual_sensors() {
 
 void setup() {
   Serial.begin(115200);
-
   // wait until serial port opens for native USB devices
   while (! Serial) { delay(1); }
-
   pinMode(SHT_LOX1, OUTPUT);
   pinMode(SHT_LOX2, OUTPUT);
-
   Serial.println(F("Shutdown pins inited..."));
-
   digitalWrite(SHT_LOX1, LOW);
   digitalWrite(SHT_LOX2, LOW);
-
   Serial.println(F("Both in reset mode...(pins are low)"));
-  
-  
   Serial.println(F("Starting..."));
   setID();
- 
+
+  for (int i = 0; i < NUM_SENSORS; i++){
+    pinMode(sensor[i], INPUT_PULLUP);
+  }
 }
 
+
 void loop() {
-   
   read_dual_sensors();
+  readIntensity();
+  playNotes();
   delay(100);
 }
