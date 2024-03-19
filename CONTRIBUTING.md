@@ -25,9 +25,9 @@ same page.
 
 ## Next steps
 
-- [13](issues/13)
-- #9
-- #2
-- #3
-- #4
+- [Sensor to trigger MIDI note on](https://github.com/BoffinFactory/PianoStaircase/issues/13)
+- [Test and Document `qjeckctl` and `fluidsynth`](https://github.com/BoffinFactory/PianoStaircase/issues/9)
+- [Time of Flight sensor demo](https://github.com/BoffinFactory/PianoStaircase/issues/2)
+- [Ultrasonic sensor demo](https://github.com/BoffinFactory/PianoStaircase/issues/3)
+- [Line break sensor demo](https://github.com/BoffinFactory/PianoStaircase/issues/4)
 
