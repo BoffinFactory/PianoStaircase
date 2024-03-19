@@ -1,0 +1,2 @@
+#needs to be in ~/.jackrdc
+/usr/bin/jackd -r -dalsa -dhw:Headphones
