@@ -1,8 +1,9 @@
 # How to Contribute
 
-If its not in Github you did not contribute...
+If it is not in Github you did not contribute...
 
-Step 1, make sure you [understand how to use git and Gtihub](https://github.com/wrightedu/Programmers-Guide-to-the-Galaxy/blob/master/Getting-Started/git.md)
+Step 1, make sure you [understand how to use git and Github](https://github.com/wrightedu/Programmers-Guide-to-the-Galaxy/blob/master/Getting-Started/git.md)
+
 This step is probably both the most critical thing that we do not teach you here in Computer Science that 
 you ***must*** learn before you can contribute code to any professional project.  
 
@@ -24,7 +25,7 @@ same page.
 
 ## Next steps
 
-- [#13](#13)
+- [13](issues/13)
 - #9
 - #2
 - #3
