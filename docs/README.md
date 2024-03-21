@@ -1,6 +1,8 @@
 ## Project Meeting
 
-**Thursday, September 21st at 5:00 PM in Russ 355**
+**Major Meetings Thursdays @3PM in 030 Russ Engineering**  
+Watch for Discord event notifications in the WSU CSE / EE Discord server
+- [server invite linked on this page](https://engineering-computer-science.wright.edu/computer-science-and-engineering)
 
 ## The Goal
 
