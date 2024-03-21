@@ -1,4 +1,4 @@
-## Project Meeting
+## Project Meetings
 
 **Major Meetings Thursdays @3PM in 030 Russ Engineering**  
 Watch for Discord event notifications in the WSU CSE / EE Discord server
@@ -6,8 +6,10 @@ Watch for Discord event notifications in the WSU CSE / EE Discord server
 
 ## The Goal
 
-Turn the lower steps of the Russ atrium staircase into an interactive staircase by  
+Turn the steps of the Russ atrium staircase into an interactive staircase by  
 integrating sensors on steps with lights and sounds.
+
+![The staircase](images/Russ-Atrium.jpg)
 
 This is a student led, mentor guided project.
 
@@ -15,19 +17,7 @@ This is a student led, mentor guided project.
 
 This project will span Fall 2023 and Spring 2024.  
 
-In our first meeting we will outline projects details, break the project into sprints, and learn enough GitHub to do project tracking among participants.
-
-### Fall 2023 Sprints (DRAFT):  
-1. Intro to Arduino + working with lights (basic of a simple circuit)
-2. Experiment with sensors - read sensor input and use it for a meaningful action
-3. Build 2+ sensor + light combos
-4. Try out first phase build on stairs - use this phase to improve designs
-
-### Spring 2024 Sprints (DRAFT): 
-1. Design our own circuits
-2. Manufacture our own circuits (milling boards, soldering components, etc)
-3. Test test test
-4. Implement final design on Russ stairwell and invite everyone to play
+Outline projects details, break the project into sprints, and learn enough GitHub to do project tracking among participants.
 
 ## What Students Get:
 
