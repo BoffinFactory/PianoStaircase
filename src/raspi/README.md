@@ -18,7 +18,10 @@ Step through the following in relatively the following order:
 
 ```bash
 sudo apt update
-sudo apt install qjackctl fluidsynth a2jmidid
+sudo apt install qjackctl fluidsynth a2jmidid ssh
+
+sudo systemctl enable ssh.service
+sudo systemctl start ssh.service
 
 sudo vim /etc/group
 # add piano (or whatever default user is) to the following groups:
