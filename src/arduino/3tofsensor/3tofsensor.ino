@@ -38,7 +38,7 @@ void setID() {
 
   // activating LOX1 and resetting LOX2
   //digitalWrite(SHT_LOX1, HIGH);
-  digitalWrite(SHT_LOX2, LOW);
+  digitalWrite(SHT_LOX2, HIGH);
   digitalWrite(SHT_LOX3, LOW);
 
   // initing LOX1
@@ -60,7 +60,7 @@ void setID() {
   //   while(1);
   // }
 
-   // activating LOX3
+  // activating LOX3
   digitalWrite(SHT_LOX3, HIGH);
   delay(10);
 
@@ -73,10 +73,10 @@ void setID() {
 }
 
 void read_dual_sensors() {
-  
+
   // lox1.rangingTest(&measure1, false); // pass in 'true' to get debug data printout!
-  // lox2.rangingTest(&measure2, false); // pass in 'true' to get debug data printout!
-  // lox3.rangingTest(&measure3, false); // pass in 'true' to get debug data printout!
+  lox2.rangingTest(&measure2, false); // pass in 'true' to get debug data printout!
+  lox3.rangingTest(&measure3, false); // pass in 'true' to get debug data printout!
 
   // print sensor one reading
   // Serial.print(F("1: "));
@@ -85,12 +85,12 @@ void read_dual_sensors() {
   // } else {
   //   Serial.print(F("Out of range"));
   // }
-  
+
   Serial.print(F(" "));
 
   // print sensor two reading
   Serial.print(F("2: "));
-  if(measure2.RangeStatus != 4) {
+  if (measure2.RangeStatus != 4) {
     Serial.print(measure2.RangeMilliMeter);
   } else {
     Serial.print(F("Out of range"));
@@ -100,21 +100,21 @@ void read_dual_sensors() {
 
   // print sensor two reading
   Serial.print(F("3: "));
-  if(measure3.RangeStatus != 4) {
+  if (measure3.RangeStatus != 4) {
     Serial.print(measure3.RangeMilliMeter);
   } else {
     Serial.print(F("Out of range"));
   }
-  
+
   Serial.println();
 }
 
-void setup() {g
+void setup() {
   // Should probably match the IDE Baud Rate
   Serial.begin(115200);
 
   // wait until serial port opens for native USB devices
-  while (! Serial) { delay(1); }
+  while (!Serial) { delay(1); }
 
   //pinMode(SHT_LOX1, OUTPUT);
   pinMode(SHT_LOX2, OUTPUT);
@@ -127,15 +127,14 @@ void setup() {g
   digitalWrite(SHT_LOX3, LOW);
 
   Serial.println(F("Both in reset mode...(pins are low)"));
-  
-  
+
+
   Serial.println(F("Starting..."));
   setID();
- 
 }
 
 void loop() {
-   
+
   read_dual_sensors();
   delay(100);
 }
