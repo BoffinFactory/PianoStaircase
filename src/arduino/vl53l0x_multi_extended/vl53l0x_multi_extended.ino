@@ -132,12 +132,12 @@ void read_sensors() {
   Serial.print(F(" "));
   for (int i = 0; i < COUNT_SENSORS; i++) {
     if (i < 2) {
-#ifndef ARDUINO_ARCH_AVR
-      Serial.print(F("Not enough memory for sensor #"));
-      Serial.print(i);
-      Serial.print("\t");
-      continue;
-#endif
+      #ifndef ARDUINO_ARCH_AVR
+        Serial.print(F("Not enough memory for sensor #"));
+        Serial.print(i);
+        Serial.print("\t");
+        continue;
+      #endif
     }
 
     Serial.print(i, DEC);
