@@ -189,11 +189,12 @@ void timed_async_read_sensors()
         Serial.print(F(":"));
         Serial.print(ranges_mm[i], DEC);
         Serial.print(F(" "));
+        Serial.print(F("Here"));
         Serial.print(stop_times[i] - start_time, DEC);
         if (timeouts[i])
             Serial.print(F("(TIMEOUT) "));
         else
-            Serial.print(F("          "));
+            Serial.print(F("\t"));
         start_time = stop_times[i];
     }
     Serial.println();
