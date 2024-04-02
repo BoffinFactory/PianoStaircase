@@ -1,27 +1,35 @@
-const int trigPinOne = 2;
-const int trigPinTwo = 5;
-const int echoPinOne = 3;
-const int echoPinTwo = 6;
+const int trigPin = 2;
+
+const int echoPins[] = {
+  6,
+  3,
+  4,
+  5,
+};
 
 float duration, distance;
 
 void setup() {
-  pinMode(trigPinOne, OUTPUT);
-  pinMode(trigPinTwo, OUTPUT);
+  pinMode(trigPin, OUTPUT);
 
-  pinMode(echoPinOne, INPUT);
-  pinMode(echoPinTwo, INPUT);
+  for(int i = 0; i < sizeof(echoPins) / sizeof(echoPins[0]); i++) {
+    pinMode(echoPins[i], INPUT);
+  }
+
   Serial.begin(9600);
 }
 
 void loop() {
-  showDistance(1, trigPinOne, echoPinOne);
-  showDistance(2, trigPinTwo, echoPinTwo);
+  for(int i = 0; i < sizeof(echoPins) / sizeof(echoPins[0]); i++) {
+    showDistance(i + 1, echoPins[i]);
+    Serial.println();
+  }
+  Serial.println();
   Serial.println();
   delay(1000);
 }
 
-void showDistance(int num, int trigPin, int echoPin) {
+void showDistance(int num, int echoPin) {
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
   digitalWrite(trigPin, HIGH);
