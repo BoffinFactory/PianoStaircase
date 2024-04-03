@@ -1,13 +1,42 @@
+#include "MIDIUSB.h"
+
 const int trigPin = 2;
 
 const int echoPins[] = {
-  6,
   3,
   4,
-  5,
 };
 
-float duration, distance;
+const int stepPitches[] = {
+  48, // C3
+  50, // B7
+};
+
+void noteOn(byte channel, byte pitch, byte velocity) {
+  midiEventPacket_t noteOn = {0x09, 0x90 | channel, pitch, velocity};
+  MidiUSB.sendMIDI(noteOn);
+}
+
+void noteOff(byte channel, byte pitch, byte velocity) {
+  midiEventPacket_t noteOff = {0x08, 0x80 | channel, pitch, velocity};
+  MidiUSB.sendMIDI(noteOff);
+}
+
+void controlChange(byte channel, byte control, byte value) {
+  midiEventPacket_t event = {0x0B, 0xB0 | channel, control, value};
+  MidiUSB.sendMIDI(event);
+}
+
+void sendNoteFromStep(int note) {
+  Serial.println("Sending note on");
+  noteOn(0, stepPitches[note], 64);   // Channel 0, middle C, normal velocity
+  MidiUSB.flush();
+  delay(500);
+  Serial.println("Sending note off");
+  noteOff(0, stepPitches[note], 64);  // Channel 0, middle C, normal velocity
+  MidiUSB.flush();
+  delay(100);
+}
 
 void setup() {
   pinMode(trigPin, OUTPUT);
@@ -16,20 +45,27 @@ void setup() {
     pinMode(echoPins[i], INPUT);
   }
 
-  Serial.begin(9600);
+  Serial.begin(115200);
 }
 
 void loop() {
+  float distance;
   for(int i = 0; i < sizeof(echoPins) / sizeof(echoPins[0]); i++) {
-    showDistance(i + 1, echoPins[i]);
+    distance = showDistance(i + 1, echoPins[i]);
+
+    if(distance < 30) {
+      sendNoteFromStep(i);
+    } 
     Serial.println();
   }
   Serial.println();
   Serial.println();
-  delay(1000);
+  delay(100);
 }
 
-void showDistance(int num, int echoPin) {
+float showDistance(int num, int echoPin) {
+  float duration, distance;
+
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
   digitalWrite(trigPin, HIGH);
@@ -38,8 +74,7 @@ void showDistance(int num, int echoPin) {
 
   duration = pulseIn(echoPin, HIGH);
   distance = (duration*.0343)/2;
-  Serial.print(num);
-  Serial.print(" Distance: ");
-  Serial.println(distance);
   delay(100);
+
+  return distance;
 }
