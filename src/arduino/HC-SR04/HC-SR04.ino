@@ -1,3 +1,4 @@
+#include "PitchToNote.h"
 #include "MIDIUSB.h"
 
 const int trigPin = 2;
@@ -8,8 +9,14 @@ const int echoPins[] = {
 };
 
 const int stepPitches[] = {
-  48, // C3
-  50, // B7
+  C4,
+  D4,
+  E4,
+  F4,
+  G4,
+  A4,
+  B4,
+  C5,
 };
 
 void noteOn(byte channel, byte pitch, byte velocity) {
