@@ -1,17 +1,4 @@
 #include "PitchToNote.h"
-#include "MIDIUSB.h"
-
-// Distance to trigger note at
-const int triggerDistance = 50;
-
-// Trigger pin to be used for all sensors
-const int trigPin = 2;
-
-// Echo pins for each sensor
-const int echoPins[] = {
-  3,
-  4,
-};
 
 // Pitches for each sensor (key value of element matches key value of echoPins; IE: stepPitch[i] = pitch sound of echoPin[i])
 const int stepPitches[] = {
@@ -25,46 +12,25 @@ const int stepPitches[] = {
   C5,
 };
 
-// State of the pitch output for each sensor
-int currentState[sizeof(echoPins) / sizeof(echoPins[0])];
+#include "MIDIUSB.h"
+#include "Piano.h"
 
-// Turn note on
-void noteOn(byte channel, byte pitch, byte velocity) {
-  midiEventPacket_t noteOn = {0x09, 0x90 | channel, pitch, velocity};
-  MidiUSB.sendMIDI(noteOn);
-}
+// Distance to trigger note at
+const int triggerDistance = 65;
 
-// Turn note off
-void noteOff(byte channel, byte pitch, byte velocity) {
-  midiEventPacket_t noteOff = {0x08, 0x80 | channel, pitch, velocity};
-  MidiUSB.sendMIDI(noteOff);
-}
+// Trigger pin to be used for all sensors
+const int trigPin = 2;
 
-// Change control
-void controlChange(byte channel, byte control, byte value) {
-  midiEventPacket_t event = {0x0B, 0xB0 | channel, control, value};
-  MidiUSB.sendMIDI(event);
-}
+// Echo pins for each sensor
+const int echoPins[] = {
+  3,
+  4,
+};
 
-// Start provided note
-void startNote(int note) {
-  Serial.print("Starting Note: ");
-  Serial.print(stepPitches[note]);
-  Serial.println();
-  noteOn(0, stepPitches[note], 64);
-  MidiUSB.flush();
-}
-
-// Stop provided note
-void stopNote(int note) {
-  Serial.print("Stopping Note: ");
-  Serial.print(stepPitches[note]);
-  Serial.println();
-  noteOff(0, stepPitches[note], 64);
-  MidiUSB.flush();
-}
-
-// Setup GPIO pins
+// Initalizes all pins
+// Sets trigger pin as output
+// Sets all echo pins as input
+// Sets baud rate
 void setup() {
   // Set trigger pin to output
   pinMode(trigPin, OUTPUT);
@@ -78,6 +44,9 @@ void setup() {
   Serial.begin(115200);
 }
 
+// Loops through all sensors looking
+// to trigger once trigger distance
+// is satisifed.
 void loop() {
   // Distance of object from sensor
   float distance;
@@ -88,21 +57,13 @@ void loop() {
     distance = showDistance(i + 1, echoPins[i]);
 
     // If distance is close enough and the currentState of pitch for sensor is 0, turn on note
-    if(distance <= triggerDistance && currentState[i] == 0) {
-      // Start note
-      startNote(i);
-
-      // Set state
-      currentState[i] = 1;
+    if(distance <= triggerDistance) {
+      changeState(stepPitches[i], true);
     } 
 
     // If sound is on and distance is too far away, turn off note  
-    else if(currentState[i] == 1 && distance > triggerDistance) {
-      // Start note
-      stopNote(i);
-
-      // Set state
-      currentState[i] = 0;
+    else {
+      changeState(stepPitches[i], false);
     }
 
     // Print line for pretty console
@@ -114,7 +75,13 @@ void loop() {
   delay(25);
 }
 
-// Given number of sensor and pin, check distance
+// A function to calculate distance of object from sensor
+// Args:
+//  num (int): number of note (coincides with step number)
+//  echoPin (int): step to check
+//
+// Outputs:
+//  distance (float): distance of object from sensor in cm
 float showDistance(int num, int echoPin) {
   // Get duration and distance
   float duration, distance;
