@@ -2,12 +2,24 @@
 
 If it is not in Github you did not contribute...
 
-Step 1, make sure you [understand how to use git and Github](https://github.com/wrightedu/Programmers-Guide-to-the-Galaxy/blob/master/Getting-Started/git.md)
-
+[Understand how to use git and Github (external link)](https://github.com/wrightedu/Programmers-Guide-to-the-Galaxy/blob/master/Getting-Started/git.md)
 This step is probably both the most critical thing that we do not teach you here in Computer Science that 
 you ***must*** learn before you can contribute code to any professional project.  
 
-That being said, feel free to use this project as a way to ease yourself into learning `git` if it is your first time.
+* [Making your first Pull Request](CONTRIBUTING.md#making-your-first-pull-request) (assumes you have never made a PR before)
+* [General work outline (pull request process)](CONTRIBUTING.md#general-work-outline)
+* [Code of Conduct](CONTRIBUTING.md#code-of-conduct)
+* [Attribution](CONTRIBUTING.md#attribution)
+
+## Making your first Pull Request
+
+Feel free to use this project as a way to ease yourself into learning `git` if it is your first time.
+
+A *Pull Request* (sometimes just PR) is the standard way of saying you have done some amount of work
+that you would like to contribute back to the group.  To do this you simply need to do the following:
+
+1. make sure you are on the `welcome-to-boffin` branch!
+2. do something cool to make your mark on this project.  It could be as simple as [TODO]
 At a minimum you should be interacting with others via comments on specific issues on the [issues page](https://github.com/BoffinFactory/PianoStaircase/issues).
 
 This will allow you to help us move the project forward by contributing meaningful reasearch, testing, or code / examples.
