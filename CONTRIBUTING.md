@@ -18,8 +18,16 @@ Feel free to use this project as a way to ease yourself into learning `git` if i
 A *Pull Request* (sometimes just PR) is the standard way of saying you have done some amount of work
 that you would like to contribute back to the group.  To do this you simply need to do the following:
 
-1. make sure you are on the `welcome-to-boffin` branch!
-2. do something cool to make your mark on this project.  It could be as simple as [TODO]
+1. Make sure you are on the `welcome-to-boffin` branch!
+2. Do something cool to make your mark on this project.  It could be as simple as walking through the 
+   [Arduino Comic](TODO) and snapping a pic for the `media` folder.
+3. `git add` your pic or contribution (the file you changed)
+4. `git commit` and type a commit message
+5. `git push`
+
+If you are not familiar with the above commands thats fine!  Grab a fellow Boffineer and ask for help!
+[TODO]
+ 
 At a minimum you should be interacting with others via comments on specific issues on the [issues page](https://github.com/BoffinFactory/PianoStaircase/issues).
 
 This will allow you to help us move the project forward by contributing meaningful reasearch, testing, or code / examples.
