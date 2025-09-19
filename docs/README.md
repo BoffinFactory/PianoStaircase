@@ -1,6 +1,6 @@
 ## Project Meetings
 
-**Major Meetings Fridays @ 2PM in 030 Russ Engineering**  
+**Major Meetings Fridays @ 2PM-4PM in 030 Russ Engineering**  
 Watch for Discord event notifications in the WSU CSE / EE Discord server
 - [server invite linked on this page](https://engineering-computer-science.wright.edu/computer-science-and-engineering)
 
