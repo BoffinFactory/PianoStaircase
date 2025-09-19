@@ -2,6 +2,8 @@
 
 A Boffin build project.
 
+[boffinfactory.github.io/PianoStaircase](https://boffinfactory.github.io/PianoStaircase/)
+
 ## Outline
 
 Using sensors with arduino and the [Arduino MIDI-USB](https://www.arduino.cc/reference/en/libraries/midiusb/) library
