@@ -1,6 +1,6 @@
 ## Project Meetings
 
-**Major Meetings Thursdays @3PM in 030 Russ Engineering**  
+**Major Meetings Fridays @ 2PM-4PM in 030 Russ Engineering**  
 Watch for Discord event notifications in the WSU CSE / EE Discord server
 - [server invite linked on this page](https://engineering-computer-science.wright.edu/computer-science-and-engineering)
 
@@ -15,7 +15,7 @@ This is a student led, mentor guided project.
 
 ## The Plan
 
-This project will span Fall 2023 and Spring 2024.  
+This project has spanned Fall 2023 and Spring 2024, and has been reintroduced spanning through Fall 2025 and potentially Spring 2026.  
 
 Outline projects details, break the project into sprints, and learn enough GitHub to do project tracking among participants.
 
