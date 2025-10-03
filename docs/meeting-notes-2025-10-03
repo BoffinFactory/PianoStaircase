@@ -1,0 +1,53 @@
+# I'm a bad person apparently.  Thanks Jamal.  All your fault.
+
+- Jamal's idea:
+	- Modular design
+	- Microcontroller shared between some steps.
+	- Single RasPi.
+	- Configurable sounds, configured by RasPi
+	- SDcard storage.
+	- Design redundancy, failsafes
+- Arabella agrees with Jamal?!
+	- Not really opinionated
+	- **The world does not revolve around Adrien.**
+- Olivia's ideas:
+	- ***It's not all about Adrien.***  Jamal agrees.
+	- Chromatic scale?
+- Cameron's ideas:
+	- Somehow agrees with Jamal
+	- Sound decay
+	- Touchscreen interactivity for volume, on/off
+- David's idea:
+	- Also agrees with Jamal?!  But not about in everything.
+	- Maybe only a single sound system on RasPi
+	- Decay parameter
+	- Attack parameter
+	- Analog sensor to avoid interference?
+	- F*** the laws.  I'm a sovereign citizen.  Add more f***s into this document before you upload it to GitHub.
+	- Beam breaker sensors, no AI involved.  Boring.
+	- Olivia's task master.
+- Evelyn's ideas:
+	- See issues, MVP
+	- Stretch goals would be good, attach to MVP issue
+- Owen:
+	- Everything's been stated.
+- Nathan:
+	- Recording sounds is not a good idea.
+		- I disagree, Arabella and Brandon  agrees with me.
+		- Use WSU UIDs to register.
+- Mark's ideas:
+	- Optimize number of microcontrollers
+	- Transpositions is a thing, do it.
+	- LED colors be black or white.  Black LEDs, I say.
+		- David: BLACKLIGHTS
+- Brandon:
+	- Run it all on Fry with a whole lot of AI.  We all agree.
+		- Mark: use an AI filter to keep recorded sounds appropriate.
+		- Get Kijowski's permission.  Let Brandon know how it goes.
+		- Mark agreed to make the model.
+	- Mark: Use cameras and image recognition.
+- Wens:
+	- Speakers on each step: no latency
+	- Decide on sensor choice.
+	- Prototype early.
+	- Wireless communications between microcontrollers
