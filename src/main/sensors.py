@@ -92,7 +92,7 @@ class SerialManager:
             try:
                 print(f"Connecting to {port}")
                 self.ser = serial.Serial(port, self.config["baudrate"], timeout=1)
-                with ReaderThread(self.ser, self.callbacks) as self.thread:
+                with ReaderThread(self.ser, lambda: self.callbacks) as self.thread:
                     while not self.stop_event.is_set():
                         time.sleep(0.5)
             except (serial.SerialException, OSError) as e:
@@ -127,7 +127,6 @@ def _initialize_serial_managers(
 
 
 def shutdown():
-    global SERIAL_MANAGERS
     print("Clearing callbacks and closing connections...")
     for dev in SERIAL_MANAGERS.values():
         dev.stop()

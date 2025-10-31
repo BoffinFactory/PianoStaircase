@@ -10,9 +10,9 @@ def get_distance(input):
         return 0
 
 
-def handle_line(line, info: sensors.SerialDeviceConfig):
+def handle_line(line, info: sensors.SerialManager):
     dist = get_distance(int(line))
-    print(f"Distance: {dist:.4f} cm by {info['name']}")
+    print(f"Distance: {dist:.4f} cm by {info.config['name']}")
 
 
 try:
