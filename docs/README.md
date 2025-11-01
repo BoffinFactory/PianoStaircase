@@ -4,10 +4,6 @@
 Watch for Discord event notifications in the WSU CSE / EE Discord server
 - [server invite linked on this page](https://engineering-computer-science.wright.edu/computer-science-and-engineering)
 
-## Documentation
-
-The documentation is located [here](documentation/)
-
 ## The Goal
 
 Turn the steps of the Russ atrium staircase into an interactive staircase by  
@@ -16,6 +12,14 @@ integrating sensors on steps with lights and sounds.
 ![The staircase](images/Russ-Atrium.jpg)
 
 This is a student led, mentor guided project.
+
+## Documentation
+
+The documentation is located [here](documentation/)
+
+## Meeting Notes
+
+The meeting notes can be found [here](meetings/)
 
 ## The Plan
 
