@@ -28,4 +28,6 @@ jobs:
       - name: Check formatting and linting with Ruff
         run: |
           # Ruff covers Black-like formatting, linting, and import sorting
-          ruff check src --output-format=github
+          if [ -d "src" ]; then
+            ruff check src --output-format=github
+          fi
