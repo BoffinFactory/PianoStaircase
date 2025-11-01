@@ -52,13 +52,16 @@ class MultiCallbackReader(LineReader):
             except Exception as e:
                 print(f"Callback error: {e}")
 
-    def handle_exception(self, exc: Exception):
-        print("⚠️ Serial error:", exc)
-        if self.on_disconnect:
-            self.on_disconnect(exc)
+
+class ReaderThreadHandler(ReaderThread):
+    def run(self):
+        try:
+            super().run()
+        except serial.SerialException as e:
+            print(f"ReaderThread Failed: {e}")
 
 
-def find_port_by_serial(serial_number: str) -> Optional[str]:
+def _find_port_by_serial(serial_number: str) -> Optional[str]:
     for p in serial.tools.list_ports.comports():
         if p.serial_number == serial_number:
             return p.device
@@ -80,7 +83,7 @@ class SerialManager:
     def _run(self):
         found_prev = False
         while not self.stop_event.is_set():
-            port = find_port_by_serial(self.config["serial_number"])
+            port = _find_port_by_serial(self.config["serial_number"])
             if not port:
                 if not found_prev:
                     print(f"Could not find {self.config['name']}")
@@ -92,10 +95,11 @@ class SerialManager:
             try:
                 print(f"Connecting to {port}")
                 self.ser = serial.Serial(port, self.config["baudrate"], timeout=1)
-                with ReaderThread(self.ser, lambda: self.callbacks) as self.thread:
-                    while not self.stop_event.is_set():
-                        time.sleep(0.5)
-            except (serial.SerialException, OSError) as e:
+                self.thread = ReaderThreadHandler(self.ser, lambda: self.callbacks)
+                self.thread.run()
+                while not self.stop_event.is_set() and self.thread.is_alive():
+                    time.sleep(0.5)
+            except (serial.SerialException, OSError, Exception) as e:
                 print(f"Serial error {self.config['name']}: {e}")
             finally:
                 if self.ser and self.ser.is_open:
@@ -104,6 +108,7 @@ class SerialManager:
                     except Exception:
                         pass
                 print(f"Reconnecting {self.config['name']}")
+                time.sleep(1)
 
     def stop(self):
         self.stop_event.set()

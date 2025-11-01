@@ -1,7 +1,5 @@
 import sensors
 
-from playsound import playsound
-
 
 def get_distance(input_analog):
     voltage = input_analog * (5.0 / 1023.0)
@@ -23,7 +21,6 @@ def outer():
         voltage = int(line) * (5.0 / 1023.0)
         dist = get_distance(int(line))
         if voltage > 0.3 and prev >= 5:
-            playsound(audio[info.index], block=False)
             print(f"Distance: {dist:.4f} cm by {info.config['name']} Voltage {voltage}")
         if voltage < 0.3:
             prev += 1
