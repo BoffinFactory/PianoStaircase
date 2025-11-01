@@ -30,4 +30,5 @@ jobs:
           # Ruff covers Black-like formatting, linting, and import sorting
           if [ -d "src" ]; then
             ruff check src --output-format=github
+            ruff format --check src
           fi
