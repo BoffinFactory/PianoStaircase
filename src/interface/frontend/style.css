@@ -1,0 +1,19 @@
+#header{
+    background-color:#046A38;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 100px;
+}
+#title{
+    color: white;
+    margin: auto;
+    font-family: "Comic Sans MS", "Comic Sans", cursive;
+    letter-spacing: 2px;
+}
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  background-color: lightgray;
+}
