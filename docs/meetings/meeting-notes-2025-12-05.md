@@ -1,0 +1,54 @@
+- ***Cranberry Pie Contest this Wednesday at Noon!***
+- **Need to formalize designs**:
+  - Formalize requirements into documentation.
+  - More than one prototype design!
+  - Basic hardware bases for prototyping next semester.
+  - This does NOT need to happen *today*.
+- **Winter Break Plans**:
+  - Piano Staircase
+    - Optional Workshops
+    - Write formal documentation (wiki?)
+  - Advent of Code
+    - ACM plug for programmers
+- **Spring Semester Plans**:
+  - What we'll be aiming for next semester
+  - Try to keep momentum going, maybe faster
+    - Move fast, break stuff.  Just like exploding booster rockets.
+- **Get Feedback**:
+  - What went right?
+    - I made a good, welcoming environments that people like to come back to
+    - I have a good personality for leadership
+  - What could go better?
+    - Need more structure.
+    - New project manager: Olivia.  Voted in unianimously.
+    - Set actual deadlines for next semester.
+    - Hardware acquirement, requestments
+    - Kanban / Github Projects use to track tasks
+    - Hardware / Software diagram
+  - Will you be returning for Piano Staircase next semester?
+    - Yes, if the time is correct.
+    - Yes, if we start working on project
+  - If you're not last, you're first.
+
+## Current Members
+
+- Adrien Abbey: Computer Science / Computer Engineering
+  - CEO
+- Jamal Brown: Computer Science / Computer Engineering / IT
+  - Pie Wizard of Questionable Skill
+    - Also Reese Hatfield
+- David Castro: Computer Science
+  - Assistant Manager / Procurement Officer
+- Owen Kemp: Computer Science / Physics
+  - Lead Physics Model Engineer
+- Wens Barambona: Computer Engineering / Economics
+  - Chief Accountant
+- Mark Armstrong: Electrical Engineer
+  - Analog System Engineer
+  - EE Diagramer Officer
+- Olivia Stevens: Mechanical
+  - Project Manager
+- Arabella: Electrical Engineering
+  - Germaine Officer
+- Shepherd Garret: Computer Engineering
+  - Digital System Engineer
