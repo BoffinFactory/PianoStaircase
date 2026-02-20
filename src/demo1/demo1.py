@@ -22,7 +22,7 @@ HYST_MM = 50  # Must rise above (TRIP_MM + HYST_MM) to re-arm
 POLL_S = 0.05  # Sensor polling interval
 COOLDOWN_S = 0.20  # Minimum time between beeps (s)
 # Sound to play from the user's home directory:
-BEEP_WAV = str(Path.home() / "beep.wave")
+BEEP_WAV = str(Path.home() / "beep.wav")
 PRINT_EVERY_S = 0.5  # Print distance at most this often
 
 
@@ -36,7 +36,7 @@ def play_beep():
         print(f"[BEEP][ERROR] WAV not found: {wav}")
         return
 
-    proc = subprocess.Popen(["aplay", "-q", str(wav)], capture_output=True, text=True)
+    proc = subprocess.run(["aplay", "-q", str(wav)], capture_output=True, text=True)
 
     if proc.returncode != 0:
         print(f"[BEEP][ERROR] aplay failed (rc={proc.returncode})")
