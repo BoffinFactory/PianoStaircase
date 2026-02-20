@@ -51,3 +51,39 @@
    60: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
    70: -- -- -- -- -- -- -- --
    ```
+
+6. Connect and test a speaker (optional)
+
+   ```bash
+   pw-play /usr/share/sounds/alsa/Front_Center.wav
+   ```
+
+7. Install the requisite packages for Python development
+
+   ```bash
+   sudo apt install -y python3-pip python3-venv alsa-utils sox
+   ```
+
+8. Setup a Python virtual environment
+
+   ```bash
+   python3 -m venv ~/.venv/vl53
+   source ~/.venv/vl53/bin/activate
+   pip install --upgrade pip
+   pip install adafruit-blinka adafruit-circuitpython-vl53l0x
+   ```
+
+9. Create an audio file for testing
+
+   ```bash
+   sox -n -r 48000 -c 1 -b 16 ~/beep.wav synth 0.12 sine 880 vol 0.3
+   aplay ~/beep.wav
+   ```
+
+10. Create/copy the Python code.
+11. Source into the virtual environment and run the code:
+
+    ```bash
+    source ~/.venv/vl53/bin/activate
+    python3 demo1.py
+    ```
