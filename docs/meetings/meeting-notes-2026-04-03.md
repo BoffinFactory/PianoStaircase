@@ -1,0 +1,52 @@
+- **Discuss what we've done.**
+	- What did we learn.
+		- Soldering
+		- Raspberry PI setup, what it is, etc.
+		- Embedded Systems
+		- No massive water tank at the top of the Russ Atrium
+		- What GitHub is, not how to use it
+	- How do we feel about it what we've done.
+		- Good, nothing to complain about
+		- Nothing else to say.
+	- What could we do better.
+		- Took a month to get Raspberry Pis working.
+		- Time management could be better.
+		- Need more basic background info.
+			- More information ahead of time, and more description as we go.
+		- Could use GitHub better.
+			- Show how to use it again
+			- Start writing more documenting.
+		- Could focus better.
+		- Organize discussions better.
+- **Discuss where we're at now.**
+	- What have we accomplished.
+		- Basic Prototype
+		- Most of the essential hardware is selected 
+		- We know step sizes.
+	- How do we feel about what we made.
+		- Process more important than results so far.
+	- What could we have done better.
+		- Documentation could be better.
+		- Overall process flow from beginning to end.
+			- Create a feasible timeline and plan.
+			- Helps push things forward.
+			- Know where we're going.
+			- Helps people see overall picture.
+			- Helps with time management.
+- **Discuss where we're going.**
+	- What do we want to accomplish.
+		- Install prototype in first few steps
+		- Touch screen interface, configuration is out of scope for next semester.
+	- How do we want to accomplish that.
+		- Write a process flow, task list, assignments.
+		- Documentation of what we're doing, updating as we go.
+		- Describe and document the process.
+	- Where do we want to be next semester.
+		- Have a few steps working,
+			- Maybe not permanently attached.
+			- Reliable, not annoying
+			- Code working.
+			- 3D printed enclosure.
+		- Ability to have different tones
+	- Need funding!
+		- Ask for hardware funds.
