@@ -17,7 +17,7 @@ The proposed Phase 1 design uses three independent step modules. Each module inc
 
 This phase intentionally excludes custom PCBs, spare modules, the Raspberry Pi 5 touchscreen controller, a final DC power supply, and full-staircase purchasing. Those items belong in Phase 2 after the team has learned from physical testing.
 
-**Recommended Phase 1 budget request:** approximately **$775**.
+**Recommended Phase 1 budget request:** approximately **$725**.
 
 ---
 
@@ -72,7 +72,8 @@ Three steps are enough to validate the hard design questions without prematurely
 * No spare modules.
 * No final touchscreen controller.
 * Existing lab DC supply used for testing.
-* 3D-printed prototype enclosures.
+* Existing proto boxes for early bench testing.
+* Limited 3D-printed fit-test pieces or brackets as needed.
 * Magnetic/non-destructive mounting experiments.
 * Basic RS-485 communication test.
 * Explicit validation tests.
@@ -135,7 +136,7 @@ Each step module contains:
 
 ```text
 Raspberry Pi Zero 2 W
-  -> VL53L4CD ToF sensor over I2C
+  -> VL53L0X baseline ToF sensor over I2C, with VL53L4CD/VL53L1X comparison testing
   -> MAX98357A I2S amplifier
   -> 40mm 4-ohm local speaker
   -> Adafruit 5162 RGBW lighting module
@@ -185,13 +186,13 @@ Determine whether all selected components can fit safely inside a flush, side-mo
 
 ### 8.2 Foot Detection Reliability
 
-Validate whether the VL53L4CD sensor can detect foot-on and foot-off behavior from the side-mounted position.
+Validate whether the existing VL53L0X sensor can detect foot-on and foot-off behavior from the side-mounted position.
 
 **Pass criteria:** The module reliably detects several users stepping on and off under realistic placement conditions.
 
 ### 8.3 Sensor Comparison
 
-Compare the VL53L4CD against the VL53L1X to determine whether range, field-of-view, or mounting angle affects reliability.
+Compare the existing VL53L0X against the VL53L4CD and VL53L1X to determine whether range, field-of-view, polling behavior, or mounting angle affects reliability.
 
 **Pass criteria:** The team can justify which sensor should be used in Phase 2.
 
@@ -275,25 +276,29 @@ Identify what must change before a semi-permanent installation request.
 
 **Phase 2 revisit:** If the Pi Zero 2 W proves too bulky, power-hungry, or maintenance-heavy, compare against Pico 2 W or ESP32-S3 alternatives.
 
+**Pico W note:** The current Phase 1 budget does not include purchasing Pico W boards. Existing Pico W inventory may be used for optional comparison if available, but the Raspberry Pi Zero 2 W remains the primary Phase 1 compute choice because Linux-based audio, sound-file handling, software volume control, and development workflows are simpler for the initial proof of concept.
+
 Reference: [https://www.raspberrypi.com/products/raspberry-pi-zero-2-w/](https://www.raspberrypi.com/products/raspberry-pi-zero-2-w/)
 
 ---
 
-## 9.2 Foot Detection: VL53L4CD + VL53L1X Comparison
+## 9.2 Foot Detection: VL53L0X Baseline + VL53L4CD/VL53L1X Comparison
 
 **Selected:**
 
-* 3 x Adafruit VL53L4CD ToF sensors.
+* Existing VL53L0X ToF sensors as the baseline, if available.
+* 1 x Adafruit VL53L4CD ToF sensor for comparison.
 * 1 x Adafruit VL53L1X ToF sensor for comparison.
 
 **Rationale:**
 
 * ToF sensors are appropriate for non-contact foot detection.
-* VL53L4CD is well suited to short-range proximity detection.
+* VL53L0X mostly worked in prior testing and should be reused as the baseline if available.
+* VL53L4CD is included to evaluate a newer short-range proximity option.
 * VL53L1X provides a longer-range comparison option.
 * STEMMA QT/Qwiic connectors simplify sensor wiring during prototyping.
 
-**Phase 1 question:** Can side-mounted ToF sensing reliably detect foot-on and foot-off from the stair alcove?
+**Phase 1 question:** Can side-mounted ToF sensing reliably detect foot-on and foot-off from the stair alcove, and do the newer sensors provide a meaningful improvement over the existing VL53L0X baseline?
 
 References:
 
@@ -459,9 +464,8 @@ Reference: [https://www.digikey.com/en/products/detail/c-k/BD08/181325](https://
 
 **Selected approach:**
 
-* 3D-printed prototype enclosures.
-* PETG for functional prototypes.
-* PLA acceptable for fit checks.
+* Existing proto boxes for early bench assembly and electronics testing.
+* Limited 3D-printed fit-test pieces or brackets as needed.
 * Magnetic retention to steel side structure, pending magnet test.
 * Rubber/TPU pads for grip and non-marring contact.
 * Printed geometry to prevent sliding/protrusion.
@@ -469,9 +473,11 @@ Reference: [https://www.digikey.com/en/products/detail/c-k/BD08/181325](https://
 
 **Rationale:**
 
+* Proto boxes allow electronics assembly and debugging to begin sooner.
 * Friction-fit alone is not robust enough for a stair installation.
 * Magnets may provide non-destructive mounting if the side structure is ferromagnetic.
 * Printed geometry should prevent shifting; magnets should not be the only anti-slide mechanism.
+* Final enclosure design should wait until Phase 2, after the team understands component placement, sensor angle, lighting angle, speaker placement, and cable routing.
 
 **Immediate test:** Bring a small magnet to the intended stair location and verify strong attachment to the exact surface where the enclosure would mount.
 
@@ -486,8 +492,9 @@ Prices are working estimates and must be verified before purchase.
 | Item                                           | Qty. | Est. Unit | Est. Subtotal | Link / Notes                                                                                                                                                                                       |
 | ---------------------------------------------- | ---: | --------: | ------------: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Raspberry Pi Zero 2 W, unheadered, SC1176      |    3 |    $15.00 |        $45.00 | [https://www.digikey.com/en/products/base-product/raspberry-pi/1690/Raspberry-Pi-Zero-2-W/725745](https://www.digikey.com/en/products/base-product/raspberry-pi/1690/Raspberry-Pi-Zero-2-W/725745) |
-| 32GB microSD cards                             |    3 |    $10.00 |        $30.00 | Exact source TBD; Digi-Key stock may be limited                                                                                                                                                    |
-| Adafruit VL53L4CD ToF sensor, product 5396     |    3 |    $14.95 |        $44.85 | [https://www.digikey.com/en/products/detail/adafruit-industries-llc/5396/16129669](https://www.digikey.com/en/products/detail/adafruit-industries-llc/5396/16129669)                               |
+| 16GB microSD cards                             |    6 |     $8.00 |        $48.00 | Exact source TBD; smaller cards provide more stock for repeated imaging/testing                                                                                                                    |
+| Existing VL53L0X ToF sensors                   |    3 |     $0.00 |         $0.00 | Use existing inventory as the baseline sensor, if available                                                                                                                                         |
+| Adafruit VL53L4CD ToF sensor, product 5396     |    1 |    $14.95 |        $14.95 | [https://www.digikey.com/en/products/detail/adafruit-industries-llc/5396/16129669](https://www.digikey.com/en/products/detail/adafruit-industries-llc/5396/16129669)                               |
 | Adafruit VL53L1X ToF sensor, product 3967      |    1 |    $14.95 |        $14.95 | [https://www.digikey.com/en/products/detail/adafruit-industries-llc/3967/17039169](https://www.digikey.com/en/products/detail/adafruit-industries-llc/3967/17039169)                               |
 | STEMMA QT / Qwiic cables, mixed 100mm/200mm    |    6 |    ~$1.10 |        ~$6.60 | Mixed lengths for placement testing                                                                                                                                                                |
 | Adafruit MAX98357A I2S amplifier, product 3006 |    3 |     $5.95 |        $17.85 | [https://www.digikey.com/en/products/detail/adafruit-industries-llc/3006/6058477](https://www.digikey.com/en/products/detail/adafruit-industries-llc/3006/6058477)                                 |
@@ -495,7 +502,7 @@ Prices are working estimates and must be verified before purchase.
 | DFRobot DFR0831 7-24V to 5V/4A buck converter  |    3 |     $4.90 |        $14.70 | [https://www.digikey.com/en/products/detail/dfrobot/DFR0831/14322651](https://www.digikey.com/en/products/detail/dfrobot/DFR0831/14322651)                                                         |
 | C&K BD08 8-position DIP switch                 |    3 |     $3.13 |         $9.39 | [https://www.digikey.com/en/products/detail/c-k/BD08/181325](https://www.digikey.com/en/products/detail/c-k/BD08/181325)                                                                           |
 
-**Subtotal:** approximately **$198.19**
+**Subtotal:** approximately **$186.29**
 
 ---
 
@@ -542,9 +549,9 @@ Prices are working estimates and must be verified before purchase.
 
 | Item                                                                          |  Qty. | Est. Subtotal | Notes                                                                                             |
 | ----------------------------------------------------------------------------- | ----: | ------------: | ------------------------------------------------------------------------------------------------- |
-| 3D-printed enclosure and non-destructive magnetic mounting hardware allowance | 1 lot |       $125.00 | PETG/PLA, magnets, rubber/TPU pads, inserts, screws, tether/restraint, diffuser/thermal materials |
+| Proto-box and non-destructive magnetic mounting hardware allowance           | 1 lot |        $75.00 | Existing proto boxes, magnets, rubber/TPU pads, inserts, screws, tether/restraint, diffuser/thermal materials, and limited printed fit-test pieces |
 
-**Subtotal:** **$125.00**
+**Subtotal:** **$75.00**
 
 ---
 
@@ -563,15 +570,15 @@ Prices are working estimates and must be verified before purchase.
 
 | Section                                |      Subtotal |
 | -------------------------------------- | ------------: |
-| Core step electronics                  |         ~$198 |
+| Core step electronics                  |         ~$186 |
 | Lighting                               |          ~$58 |
 | RS-485                                 |          ~$56 |
 | Power/wiring/protection                |         ~$150 |
-| Enclosure/mounting                     |          $125 |
+| Enclosure/mounting                     |           $75 |
 | Reserve/shipping/variance              |          $175 |
-| **Recommended Phase 1 budget request** | **$750-$775** |
+| **Recommended Phase 1 budget request** | **$700-$725** |
 
-**Recommended request amount:** **$775**.
+**Recommended request amount:** **$725**.
 
 ---
 
@@ -721,7 +728,7 @@ Before stair testing:
 
 ## 13.3 Physical Fit Test
 
-* Place enclosure mockups in the stair alcove.
+* Place proto boxes and/or simple fit-test mockups in the stair alcove.
 * Confirm flush fit.
 * Confirm cable routing.
 * Confirm no protrusion into walking path.
@@ -764,7 +771,7 @@ Check:
 | --------------------------------------------- | ----------- | -------------------------------------------------------------------------- |
 | Enclosure may be too tight                    | High        | Use unheadered Pi, low-profile wiring, iterative prints                    |
 | Magnetic mounting may be weaker than expected | High        | Test actual steel surface; use rubber-coated magnets, geometry, and tether |
-| ToF sensor may false-trigger                  | Medium/High | Test angles; compare VL53L4CD and VL53L1X; add filtering                   |
+| ToF sensor may false-trigger                  | Medium/High | Test angles; compare VL53L0X, VL53L4CD, and VL53L1X; add filtering          |
 | Lighting may glare or overheat                | Medium      | Limit brightness; test diffuser/shroud; monitor temperature                |
 | Speaker may not fit or sound good             | Medium      | Test enclosure geometry and grille; adjust placement                       |
 | Pi audio latency may feel poor                | Medium      | Use simple audio stack; test WAV playback and fade behavior                |
@@ -837,7 +844,7 @@ By the end of Phase 1, the team should produce:
 1. Working three-step proof-of-concept demo.
 2. Documented BOM revisions.
 3. Photos of enclosure fit and wiring.
-4. Sensor test results.
+4. Sensor test results comparing the existing VL53L0X baseline against the VL53L4CD and VL53L1X.
 5. Audio/lighting behavior notes.
 6. Power/current measurements.
 7. RS-485 communication test notes.
@@ -849,6 +856,6 @@ By the end of Phase 1, the team should produce:
 
 ## 18. Summary
 
-The proposed Phase 1 design is a conservative, validation-focused approach. It avoids prematurely purchasing a full staircase system while still testing the important engineering risks. The estimated $775 budget is modest relative to the project’s long-term scope and should provide enough hardware and support parts to build a meaningful three-step demo.
+The proposed Phase 1 design is a conservative, validation-focused approach. It avoids prematurely purchasing a full staircase system while still testing the important engineering risks. The estimated $725 budget is modest relative to the project’s long-term scope and should provide enough hardware and support parts to build a meaningful three-step demo.
 
 The most important outcome of Phase 1 is not the demo itself. The most important outcome is the information needed to design Phase 2 responsibly.

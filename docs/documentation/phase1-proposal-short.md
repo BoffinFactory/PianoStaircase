@@ -14,7 +14,7 @@ The Piano Staircase project aims to create an interactive musical and visual sta
 
 Rather than purchasing hardware for the full staircase immediately, Phase 1 will build a small three-step proof of concept. The purpose is to learn what works before committing to a larger installation.
 
-**Recommended Phase 1 budget request:** approximately **$775**.
+**Recommended Phase 1 budget request:** approximately **$725**.
 
 ---
 
@@ -52,6 +52,14 @@ Each step should be able to:
 
 Temporary WiFi may be used during development and testing, but the final design should not depend on WiFi.
 
+Advisor-feedback updates reflected in this revision:
+
+* Use smaller microSD cards in greater quantity rather than 32 GB cards.
+* Do not purchase Pico W boards; use existing inventory only if the team wants an optional comparison.
+* Treat existing VL53L0X sensors as the baseline sensor option.
+* Purchase only one VL53L4CD and one VL53L1X for comparison testing.
+* Use existing proto boxes for early bench work and reduce the mechanical prototyping allowance.
+
 ---
 
 ## 4. Proposed Per-Step Design
@@ -61,15 +69,15 @@ Each step module will include:
 | Subsystem           | Selected Phase 1 Hardware              | Purpose                                                       |
 | ------------------- | -------------------------------------- | ------------------------------------------------------------- |
 | Compute             | Raspberry Pi Zero 2 W                  | Runs sensor, audio, lighting, and configuration software      |
-| Foot detection      | VL53L4CD time-of-flight sensor         | Detects foot-on and foot-off behavior                         |
-| Sensor comparison   | VL53L1X time-of-flight sensor          | Used to compare range/field-of-view options                   |
+| Baseline foot detection | Existing VL53L0X time-of-flight sensors, if available | Uses existing inventory as the baseline foot-detection test |
+| Sensor comparison   | VL53L4CD and VL53L1X time-of-flight sensors | Compares newer range, field-of-view, and polling options against the baseline |
 | Audio               | MAX98357A I2S amplifier + 40mm speaker | Plays sound locally from each step                            |
 | Lighting            | Adafruit 5162 RGBW module              | Provides local visual feedback                                |
 | Lighting comparison | 1m addressable RGB strip               | Tests whether strip lighting works better than point lighting |
 | Power               | DFRobot DFR0831 12V-to-5V converter    | Converts shared 12V power to local 5V power                   |
 | Configuration bus   | SparkFun RS-485 breakout               | Allows wired configuration/testing                            |
 | Step identity       | 8-position DIP switch                  | Lets identical modules know which step they are               |
-| Mounting            | 3D-printed enclosure + magnets         | Tests removable, non-destructive stair mounting               |
+| Mounting            | Existing proto boxes + limited printed/magnetic fit testing | Tests removable, non-destructive stair mounting |
 
 ---
 
@@ -102,8 +110,8 @@ The modules must fit flush into the side alcove of each step. The design should 
 
 The current mounting concept is:
 
-* 3D-printed enclosure,
-* PETG for functional prototypes,
+* existing proto boxes for early electronics assembly,
+* limited 3D-printed fit-test pieces or brackets as needed,
 * magnetic attachment to the steel side structure, pending testing,
 * rubber or TPU pads to improve grip and avoid surface damage,
 * printed geometry to prevent sliding or protrusion,
@@ -123,7 +131,7 @@ Can the electronics fit in a flush side-mounted enclosure without protruding int
 
 ### Foot Detection
 
-Can the time-of-flight sensor reliably detect when a foot is placed on and removed from a step?
+Can the existing VL53L0X sensor reliably detect when a foot is placed on and removed from a step, and do the VL53L4CD or VL53L1X provide a meaningful improvement?
 
 ### Local Audio
 
@@ -159,13 +167,13 @@ What changes are needed before any semi-permanent or permanent installation is r
 
 | Category                                            | Estimated Cost |
 | --------------------------------------------------- | -------------: |
-| Core step electronics                               |          ~$198 |
+| Core step electronics                               |          ~$191 |
 | Lighting                                            |           ~$58 |
 | RS-485 communication hardware                       |           ~$56 |
 | Power, wiring, fuses, and connectors                |          ~$150 |
-| 3D-printed enclosure and magnetic mounting hardware |          ~$125 |
+| Proto-box, limited printed fit-test, and magnetic mounting hardware |           ~$75 |
 | Integration reserve, shipping, and price variance   |          ~$175 |
-| **Recommended Phase 1 request**                     |  **$750–$775** |
+| **Recommended Phase 1 request**                     |  **$705–$725** |
 
 The reserve is included because physical electronics prototypes often require small additional parts such as connectors, adapters, wire lengths, mounting hardware, or replacement support components once assembly begins.
 
@@ -177,6 +185,7 @@ Phase 1 does **not** include:
 
 * custom PCBs,
 * spare modules,
+* new Pico W boards,
 * Raspberry Pi 5 touchscreen controller,
 * dedicated final DC power supply,
 * final enclosure design,
@@ -194,8 +203,8 @@ By the end of Phase 1, the team should have:
 
 1. A working three-step proof-of-concept demo.
 2. Notes on which hardware worked and which should change.
-3. Photos of the enclosure fit and wiring layout.
-4. Sensor reliability observations.
+3. Photos of the enclosure/proto-box fit and wiring layout.
+4. Sensor reliability observations comparing VL53L0X, VL53L4CD, and VL53L1X.
 5. Audio and lighting test results.
 6. Basic power/current measurements.
 7. RS-485 communication test results.
@@ -207,5 +216,7 @@ By the end of Phase 1, the team should have:
 ## 11. Summary
 
 Phase 1 is a controlled, low-cost engineering validation build. It is designed to answer the most important design questions before requesting funds for a larger, more permanent installation.
+
+The updated Phase 1 plan uses existing inventory where practical, reduces the enclosure budget, avoids purchasing additional Pico W boards, and treats existing VL53L0X sensors as the baseline while still testing newer ToF options.
 
 The goal is not just to make three steps work. The goal is to learn enough from three steps to make the next funding request accurate, safe, and technically justified.
