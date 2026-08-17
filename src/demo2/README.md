@@ -25,6 +25,17 @@ See:
 
 [Phase 1: Raspberry Pi and VL53L0X Setup](docs/phase-1-sensor.md)
 
+## Hardware Documentation
+
+Before modifying hardware, read:
+
+- [Raspberry Pi Hardware Safety](docs/hardware-safety.md)
+- [Breadboard Wiring Conventions](docs/breadboard-wiring.md)
+
+Lighting documentation:
+
+- [Single LED Lighting Channel](docs/led-channel.md)
+
 ## Quick Start
 
 The current setup was tested on:
