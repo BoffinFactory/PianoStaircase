@@ -48,6 +48,11 @@ DEMO_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 	-r "$DEMO_DIR/requirements.txt"
 
 echo
+echo "Installing Demo 2 Python package..."
+
+"$VENV_PATH/bin/python" -m pip install -e "$DEMO_DIR"
+
+echo
 echo "[4/4] Checking Python hardware libraries..."
 
 "$VENV_PATH/bin/python" - <<'PY'

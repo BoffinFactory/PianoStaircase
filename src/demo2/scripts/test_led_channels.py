@@ -9,14 +9,9 @@ transistor-controlled channels.
 Press Ctrl+C to stop early.
 """
 
-from lighting import LightingSystem
-import sys
 import time
-from pathlib import Path
 
-
-DEMO_DIR = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(DEMO_DIR))
+from piano_staircase_demo.lighting import LightingSystem
 
 
 def main() -> None:

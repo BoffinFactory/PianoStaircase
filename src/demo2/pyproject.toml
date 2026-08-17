@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "piano-staircase-demo"
+version = "0.1.0"
+description = "Software for the Piano Staircase Demo 2 tabletop demonstration"
+requires-python = ">=3.13"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["piano_staircase_demo*"]
