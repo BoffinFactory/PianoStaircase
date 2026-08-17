@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+VENV_PATH="${VENV_PATH:-$HOME/.venv/piano-demo}"
+
+echo "========================================"
+echo " Piano Staircase Demo 2 Setup"
+echo "========================================"
+echo
+
+echo "[1/4] Installing Raspberry Pi OS packages..."
+
+sudo apt update
+sudo apt install -y \
+	python3-lgpio \
+	python3-venv \
+	i2c-tools
+
+echo
+echo "[2/4] Creating Python virtual environment..."
+
+if [[ -d "$VENV_PATH" ]]; then
+	echo "Virtual environment already exists:"
+	echo "  $VENV_PATH"
+else
+	python3 -m venv --system-site-packages "$VENV_PATH"
+	echo "Created:"
+	echo "  $VENV_PATH"
+fi
+
+echo
+echo "[3/4] Installing Python packages..."
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+DEMO_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+
+"$VENV_PATH/bin/python" -m pip install \
+	-r "$DEMO_DIR/requirements.txt"
+
+echo
+echo "[4/4] Checking Python hardware libraries..."
+
+"$VENV_PATH/bin/python" - <<'PY'
+import lgpio
+import board
+import busio
+import adafruit_vl53l0x
+
+print("lgpio:   OK")
+print("Blinka:  OK")
+print("VL53L0X: OK")
+PY
+
+echo
+echo "Setup complete."
+echo
+echo "Before using the sensor, make sure I2C is enabled:"
+echo
+echo "  sudo raspi-config"
+echo "  Interface Options -> I2C -> Enable"
+echo
+echo "Then check for the VL53L0X:"
+echo
+echo "  i2cdetect -y 1"
+echo
+echo "Expected address: 0x29"
+echo
+echo "Activate the Python environment with:"
+echo
+echo "  source $VENV_PATH/bin/activate"
