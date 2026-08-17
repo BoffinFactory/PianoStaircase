@@ -122,3 +122,10 @@ before considering each subsystem complete.
 AI-generated output should not be assumed correct solely because it appears in this repository. The
 project's build-test-document-automate-integrate process is intended to ensure that generated
 material is reviewed and validated before it becomes part of the completed demonstration.
+
+## License
+
+Unless otherwise noted, the code and documentation in `src/demo2/` are licensed under the MIT
+License. See [LICENSE](LICENSE).
+
+Third-party dependencies remain subject to their respective licenses.
