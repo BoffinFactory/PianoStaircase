@@ -40,6 +40,7 @@ Before modifying hardware, read:
 Lighting documentation:
 
 - [Single LED Lighting Channel](docs/led-channel.md)
+- [Three-Channel Lighting System](docs/three-channel-lighting.md)
 
 ## Quick Start
 
@@ -86,6 +87,15 @@ python scripts/test_vl53l0x.py
 Move an object toward and away from the sensor. The displayed distance should change.
 
 Press `Ctrl+C` to stop the diagnostic.
+
+To test the three lighting channels after assembling the documented circuit:
+
+```bash
+source ~/.venv/piano-demo/bin/activate
+./scripts/test_led_channels.py
+```
+
+See [Three-Channel Lighting System](docs/three-channel-lighting.md) for wiring and GPIO assignments.
 
 ## Development Approach
 

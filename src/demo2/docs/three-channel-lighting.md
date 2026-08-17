@@ -49,7 +49,7 @@ Base
 10 kΩ
  |
 GND
-````
+```
 
 The green, yellow, and blue channels therefore differ primarily in:
 
