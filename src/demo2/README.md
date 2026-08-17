@@ -8,9 +8,9 @@ example that future students should be able to install, test, understand, and mo
 The demo is being developed in phases. Each phase adds one working subsystem and includes
 documentation and diagnostic tools before the next subsystem is added.
 
-## Current Phase
+## Current Status
 
-### Phase 3 — Three-Channel Lighting
+### Phase 3 — Three-Channel Lighting — Complete
 
 Phase 1 established the Raspberry Pi software environment and VL53L0X distance sensing.
 
@@ -24,11 +24,17 @@ Phase 3 expands the lighting system into three independently controlled channels
 
 All three channels have been independently tested and successfully operated together using PWM.
 
+The lighting subsystem is now implemented as reusable Python package code and has been validated
+against the complete three-channel breadboard circuit.
+
+The next development phase will add audio output and synchronization with the lighting system.
+
 See:
 
 - [Phase 1: Raspberry Pi and VL53L0X Setup](docs/phase-1-sensor.md)
 - [Single LED Lighting Channel](docs/led-channel.md)
 - [Three-Channel Lighting System](docs/three-channel-lighting.md)
+- [Software Architecture](docs/software-architecture.md)
 
 ## Hardware Documentation
 
@@ -41,6 +47,13 @@ Lighting documentation:
 
 - [Single LED Lighting Channel](docs/led-channel.md)
 - [Three-Channel Lighting System](docs/three-channel-lighting.md)
+
+## Software Documentation
+
+- [Software Architecture](docs/software-architecture.md)
+
+Reusable application code is located in the `piano_staircase_demo` Python package. Diagnostic and
+setup utilities are kept separately in `scripts/`.
 
 ## Quick Start
 
