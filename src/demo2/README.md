@@ -108,3 +108,17 @@ build -> test -> document -> automate -> integrate
 A subsystem should have a simple diagnostic test before it is incorporated into the complete demo.
 This makes hardware problems easier to isolate and gives future students small working examples they
 can study independently.
+
+## AI-Assisted Development
+
+The code and documentation for Demo 2 were developed with assistance from OpenAI ChatGPT under the
+direction of project contributors.
+
+ChatGPT was used to help draft code, documentation, explanations, and development procedures.
+Project contributors reviewed the generated material, made implementation decisions, assembled and
+inspected the hardware, and validated hardware-facing code on the intended Raspberry Pi system
+before considering each subsystem complete.
+
+AI-generated output should not be assumed correct solely because it appears in this repository. The
+project's build-test-document-automate-integrate process is intended to ensure that generated
+material is reviewed and validated before it becomes part of the completed demonstration.
