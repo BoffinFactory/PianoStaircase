@@ -10,20 +10,25 @@ documentation and diagnostic tools before the next subsystem is added.
 
 ## Current Phase
 
-### Phase 1 — VL53L0X Distance Sensor
+### Phase 2 — Single LED Lighting Channel
 
-The first phase establishes the Raspberry Pi software environment and verifies communication with a
-VL53L0X time-of-flight distance sensor.
+Phase 1 established the Raspberry Pi software environment and verified communication with the
+VL53L0X time-of-flight sensor.
 
-A working Phase 1 system can:
+Phase 2 adds a transistor-controlled LED lighting channel and introduces GPIO output, transistor
+switching, and PWM brightness control.
 
-- communicate with the VL53L0X over I2C;
-- detect the sensor at address `0x29`;
-- read live distance measurements from Python.
+Completed so far:
+
+- VL53L0X distance sensing over I2C
+- reproducible Raspberry Pi software setup
+- GPIO17 transistor-controlled LED channel
+- PWM brightness and fade control
 
 See:
 
-[Phase 1: Raspberry Pi and VL53L0X Setup](docs/phase-1-sensor.md)
+- [Phase 1: Raspberry Pi and VL53L0X Setup](docs/phase-1-sensor.md)
+- [Single LED Lighting Channel](docs/led-channel.md)
 
 ## Hardware Documentation
 

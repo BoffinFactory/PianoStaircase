@@ -2,6 +2,15 @@
 
 set -euo pipefail
 
+if [[ ! -r /proc/device-tree/model ]] ||
+	! grep -qi "Raspberry Pi" /proc/device-tree/model; then
+	echo "ERROR: This setup script is intended to run on a Raspberry Pi."
+	echo
+	echo "No Raspberry Pi hardware was detected."
+	echo "Run this script directly on the Pi used for the Piano Staircase demo."
+	exit 1
+fi
+
 VENV_PATH="${VENV_PATH:-$HOME/.venv/piano-demo}"
 
 echo "========================================"
