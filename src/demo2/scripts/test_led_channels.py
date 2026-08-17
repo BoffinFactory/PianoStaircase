@@ -1,161 +1,76 @@
 #!/usr/bin/env python3
 
 """
-Three-channel LED diagnostic for Piano Staircase Demo 2.
+Three-channel lighting diagnostic for Piano Staircase Demo 2.
 
-Tests the green, yellow, and blue transistor-controlled lighting channels
-individually and together using PWM.
-
-Channel assignments:
-
-    Green  -> GPIO17 / physical pin 11
-    Yellow -> GPIO27 / physical pin 13
-    Blue   -> GPIO22 / physical pin 15
+Tests the reusable lighting module against the green, yellow, and blue
+transistor-controlled channels.
 
 Press Ctrl+C to stop early.
 """
 
+from lighting import LightingSystem
+import sys
 import time
-
-import board
-import pwmio
+from pathlib import Path
 
 
-PWM_FREQUENCY_HZ = 500
-MAX_DUTY_CYCLE = 65535
-
-CHANNEL_PINS = {
-    "GREEN": board.D17,
-    "YELLOW": board.D27,
-    "BLUE": board.D22,
-}
-
-
-def percent_to_duty_cycle(percent: float) -> int:
-    """Convert a brightness percentage from 0-100 into a PWM duty cycle."""
-
-    return round(MAX_DUTY_CYCLE * percent / 100)
-
-
-def set_brightness(pwm: pwmio.PWMOut, percent: float) -> None:
-    """Set one LED channel to the requested brightness."""
-
-    pwm.duty_cycle = percent_to_duty_cycle(percent)
-
-
-def fade(
-    pwm: pwmio.PWMOut,
-    start_percent: float,
-    end_percent: float,
-    duration_seconds: float = 1.0,
-    steps: int = 50,
-) -> None:
-    """Fade one LED channel between two brightness levels."""
-
-    delay = duration_seconds / steps
-    difference = end_percent - start_percent
-
-    for step in range(steps + 1):
-        fraction = step / steps
-        brightness = start_percent + difference * fraction
-
-        set_brightness(pwm, brightness)
-        time.sleep(delay)
-
-
-def fade_all(
-    channels: dict[str, pwmio.PWMOut],
-    start_percent: float,
-    end_percent: float,
-    duration_seconds: float = 1.5,
-    steps: int = 75,
-) -> None:
-    """Fade every LED channel together."""
-
-    delay = duration_seconds / steps
-    difference = end_percent - start_percent
-
-    for step in range(steps + 1):
-        fraction = step / steps
-        brightness = start_percent + difference * fraction
-
-        for pwm in channels.values():
-            set_brightness(pwm, brightness)
-
-        time.sleep(delay)
-
-
-def all_off(channels: dict[str, pwmio.PWMOut]) -> None:
-    """Turn every lighting channel off."""
-
-    for pwm in channels.values():
-        set_brightness(pwm, 0)
+DEMO_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(DEMO_DIR))
 
 
 def main() -> None:
-    print("=== Piano Staircase Three-Channel LED Diagnostic ===")
+    print("=== Piano Staircase Three-Channel Lighting Diagnostic ===")
     print()
 
-    channels = {
-        name: pwmio.PWMOut(
-            pin,
-            frequency=PWM_FREQUENCY_HZ,
-            duty_cycle=0,
-        )
-        for name, pin in CHANNEL_PINS.items()
-    }
-
     try:
-        # Test each channel independently.
-        for name, pwm in channels.items():
-            print(f"Testing {name} channel...")
+        with LightingSystem() as lights:
+            print("Testing individual brightness levels...")
 
-            for brightness in (25, 50, 75, 100):
-                print(f"  {brightness:3d}%")
-                set_brightness(pwm, brightness)
-                time.sleep(0.75)
+            for channel in lights.channels:
+                print(f"Testing {channel.name}...")
 
-            set_brightness(pwm, 0)
-            time.sleep(0.5)
+                for brightness in (25, 50, 75, 100):
+                    print(f"  {brightness:3d}%")
+                    channel.set_brightness(brightness)
+                    time.sleep(0.75)
 
-        print()
-        print("Testing staircase sequence...")
+                channel.off()
+                time.sleep(0.5)
 
-        for _ in range(3):
-            for name, pwm in channels.items():
-                print(f"  {name}")
-                set_brightness(pwm, 100)
-                time.sleep(0.4)
-                set_brightness(pwm, 0)
+            print()
+            print("Testing staircase sequence...")
 
-        print()
-        print("Testing individual fades...")
+            for _ in range(3):
+                for channel in lights.channels:
+                    print(f"  {channel.name}")
+                    channel.set_brightness(100)
+                    time.sleep(0.4)
+                    channel.off()
 
-        for name, pwm in channels.items():
-            print(f"  Fading {name}")
-            fade(pwm, 0, 100)
-            fade(pwm, 100, 0)
+            print()
+            print("Testing individual fades...")
 
-        print()
-        print("Testing simultaneous fade...")
+            for channel in lights.channels:
+                print(f"  Fading {channel.name}")
+                channel.fade_to(100)
+                channel.fade_to(0)
 
-        for _ in range(3):
-            fade_all(channels, 0, 100)
-            fade_all(channels, 100, 0)
+            print()
+            print("Testing simultaneous fade...")
 
-        print()
-        print("Diagnostic complete.")
+            for _ in range(3):
+                lights.fade_all_to(100)
+                lights.fade_all_to(0)
+
+            print()
+            print("Diagnostic complete.")
 
     except KeyboardInterrupt:
         print()
         print("Diagnostic stopped.")
 
     finally:
-        all_off(channels)
-
-        for pwm in channels.values():
-            pwm.deinit()
-
         print("All channels OFF.")
 
 
