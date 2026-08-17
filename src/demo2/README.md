@@ -10,25 +10,25 @@ documentation and diagnostic tools before the next subsystem is added.
 
 ## Current Phase
 
-### Phase 2 — Single LED Lighting Channel
+### Phase 3 — Three-Channel Lighting
 
-Phase 1 established the Raspberry Pi software environment and verified communication with the
-VL53L0X time-of-flight sensor.
+Phase 1 established the Raspberry Pi software environment and VL53L0X distance sensing.
 
-Phase 2 adds a transistor-controlled LED lighting channel and introduces GPIO output, transistor
-switching, and PWM brightness control.
+Phase 2 established a transistor-controlled LED channel and PWM brightness control.
 
-Completed so far:
+Phase 3 expands the lighting system into three independently controlled channels:
 
-- VL53L0X distance sensing over I2C
-- reproducible Raspberry Pi software setup
-- GPIO17 transistor-controlled LED channel
-- PWM brightness and fade control
+- green — GPIO17 / physical pin 11;
+- yellow — GPIO27 / physical pin 13;
+- blue — GPIO22 / physical pin 15.
+
+All three channels have been independently tested and successfully operated together using PWM.
 
 See:
 
 - [Phase 1: Raspberry Pi and VL53L0X Setup](docs/phase-1-sensor.md)
 - [Single LED Lighting Channel](docs/led-channel.md)
+- [Three-Channel Lighting System](docs/three-channel-lighting.md)
 
 ## Hardware Documentation
 

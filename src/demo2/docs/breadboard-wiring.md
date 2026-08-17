@@ -193,6 +193,13 @@ GPIO17 / physical pin 11
 
 This helps prevent confusing a physical pin number with a GPIO number.
 
+The official Raspberry Pi GPIO documentation includes the current 40-pin header diagram and
+descriptions of the available GPIO functions:
+
+<https://www.raspberrypi.com/documentation/computers/raspberry-pi.html#gpio>
+
+When physically wiring the Raspberry Pi, consult a pinout rather than relying on memory.
+
 ## Common Ground
 
 Circuits controlled by the Raspberry Pi need a shared electrical reference.

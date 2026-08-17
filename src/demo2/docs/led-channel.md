@@ -65,6 +65,13 @@ When GPIO17 is low, it outputs approximately 0 V.
 
 The GPIO does **not** directly power the LED. Instead, it controls the transistor.
 
+The official Raspberry Pi GPIO pinout is available at:
+
+<https://www.raspberrypi.com/documentation/computers/raspberry-pi.html#gpio>
+
+The pinout is especially useful because GPIO numbers and physical header pin numbers are separate
+numbering systems.
+
 ## Why Use a Transistor?
 
 A transistor can act as an electronically controlled switch.
