@@ -21,7 +21,7 @@ from typing import Sequence
 SAMPLE_RATE = 48_000
 AMPLITUDE = 0.65
 FADE_SECONDS = 0.01
-PIPEWIRE_LATENCY = "50ms"
+PIPEWIRE_LATENCY = "25ms"
 
 NOTES = {
     "C4": 261.63,
