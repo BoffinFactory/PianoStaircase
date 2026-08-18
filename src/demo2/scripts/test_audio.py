@@ -3,8 +3,7 @@
 """
 Audio diagnostic for Piano Staircase Demo 2.
 
-Generates and plays the C4, E4, and G4 notes used by the tabletop demo. Audio is sent to the current
-PipeWire default output.
+Generates and plays a C4-E4-G4 musical sequence through the current PipeWire default output.
 
 Press Ctrl+C to stop early.
 """
@@ -13,14 +12,16 @@ import math
 import struct
 import subprocess
 import tempfile
-import time
 import wave
 from pathlib import Path
 
 
 SAMPLE_RATE = 48_000
-NOTE_DURATION_SECONDS = 0.35
 AMPLITUDE = 0.65
+
+NOTE_DURATION_SECONDS = 0.35
+NOTE_GAP_SECONDS = 0.08
+SEQUENCE_GAP_SECONDS = 0.75
 FADE_SECONDS = 0.01
 
 NOTES = {
@@ -29,83 +30,107 @@ NOTES = {
     "G4": 392.00,
 }
 
+SEQUENCE = ("C4", "E4", "G4")
 
-def create_tone(path: Path, frequency_hz: float) -> None:
-    """Generate a stereo WAV file containing one sine-wave tone."""
 
-    frame_count = int(SAMPLE_RATE * NOTE_DURATION_SECONDS)
+def write_silence(wav: wave.Wave_write, duration_seconds: float) -> None:
+    """Write stereo silence to an open WAV file."""
+
+    frame_count = int(SAMPLE_RATE * duration_seconds)
+    silent_frame = struct.pack("<hh", 0, 0)
+
+    for _ in range(frame_count):
+        wav.writeframesraw(silent_frame)
+
+
+def write_tone(
+    wav: wave.Wave_write,
+    frequency_hz: float,
+    duration_seconds: float,
+) -> None:
+    """Write one stereo sine-wave tone to an open WAV file."""
+
+    frame_count = int(SAMPLE_RATE * duration_seconds)
     fade_frames = int(SAMPLE_RATE * FADE_SECONDS)
+
+    for frame in range(frame_count):
+        time_seconds = frame / SAMPLE_RATE
+
+        envelope = 1.0
+
+        if frame < fade_frames:
+            envelope = frame / fade_frames
+        elif frame >= frame_count - fade_frames:
+            envelope = (frame_count - frame - 1) / fade_frames
+
+        sample = math.sin(
+            2 * math.pi * frequency_hz * time_seconds
+        )
+
+        value = int(
+            32767 * AMPLITUDE * envelope * sample
+        )
+
+        wav.writeframesraw(
+            struct.pack("<hh", value, value)
+        )
+
+
+def create_sequence(path: Path) -> None:
+    """Generate the complete diagnostic as one continuous WAV file."""
 
     with wave.open(str(path), "w") as wav:
         wav.setnchannels(2)
         wav.setsampwidth(2)
         wav.setframerate(SAMPLE_RATE)
 
-        for frame in range(frame_count):
-            time_seconds = frame / SAMPLE_RATE
+        # Give the audio stream a short period to become established before the first audible note.
+        write_silence(wav, 0.5)
 
-            envelope = 1.0
+        for repetition in range(3):
+            for index, note in enumerate(SEQUENCE):
+                write_tone(
+                    wav,
+                    NOTES[note],
+                    NOTE_DURATION_SECONDS,
+                )
 
-            if frame < fade_frames:
-                envelope = frame / fade_frames
-            elif frame >= frame_count - fade_frames:
-                envelope = (frame_count - frame - 1) / fade_frames
+                if index < len(SEQUENCE) - 1:
+                    write_silence(
+                        wav,
+                        NOTE_GAP_SECONDS,
+                    )
 
-            sample = math.sin(
-                2 * math.pi * frequency_hz * time_seconds
-            )
-
-            value = int(
-                32767 * AMPLITUDE * envelope * sample
-            )
-
-            wav.writeframesraw(
-                struct.pack("<hh", value, value)
-            )
-
-
-def play_tone(path: Path) -> None:
-    """Play a WAV file through the current PipeWire default output."""
-
-    subprocess.run(
-        ["pw-play", str(path)],
-        check=True,
-    )
+            if repetition < 2:
+                write_silence(
+                    wav,
+                    SEQUENCE_GAP_SECONDS,
+                )
 
 
 def main() -> None:
     print("=== Piano Staircase Audio Diagnostic ===")
     print()
+    print("Generating C4-E4-G4 test sequence...")
 
     with tempfile.TemporaryDirectory() as temp_directory:
-        temp_path = Path(temp_directory)
+        sequence_path = (
+            Path(temp_directory)
+            / "piano-staircase-audio-test.wav"
+        )
 
-        tone_paths = {}
+        create_sequence(sequence_path)
 
-        for note, frequency in NOTES.items():
-            path = temp_path / f"{note.lower()}.wav"
-            create_tone(path, frequency)
-            tone_paths[note] = path
-
-        print("Testing individual notes...")
-
-        for note, path in tone_paths.items():
-            print(f"  {note}")
-            play_tone(path)
-            time.sleep(0.5)
-
+        print("Playing sequence...")
         print()
-        print("Testing C-E-G sequence...")
 
-        for _ in range(3):
-            for note in ("C4", "E4", "G4"):
-                print(f"  {note}")
-                play_tone(tone_paths[note])
+        subprocess.run(
+            ["pw-play", str(sequence_path)],
+            check=True,
+        )
 
-            time.sleep(0.75)
-
-        print()
-        print("Diagnostic complete.")
+    print()
+    print("Diagnostic complete.")
 
 
 if __name__ == "__main__":
