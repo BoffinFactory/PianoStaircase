@@ -39,22 +39,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--trigger-samples",
         type=int,
-        default=2,
+        default=1,
         help="Consecutive close readings required to trigger (default: 2).",
     )
 
     parser.add_argument(
         "--rearm-samples",
         type=int,
-        default=3,
+        default=1,
         help="Consecutive far readings required to rearm (default: 3).",
     )
 
     parser.add_argument(
         "--hz",
         type=float,
-        default=10.0,
-        help="Target sensor polling frequency in Hz (default: 10).",
+        default=30.0,
+        help="Target sensor polling frequency in Hz (default: 30).",
     )
 
     return parser.parse_args()
@@ -130,12 +130,12 @@ def main() -> None:
                 sample_time = time.monotonic()
                 distance_mm = sensor.distance_mm
 
-                if distance_mm == 0:
+                if distance_mm is None:
                     elapsed = sample_time - start_time
 
                     print(
                         f"{elapsed:6.2f}s   "
-                        f"{distance_mm:4d} mm   "
+                        f"{'----':>7}   "
                         f"{'INVALID':<10}"
                     )
 

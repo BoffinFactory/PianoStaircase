@@ -40,7 +40,13 @@ def main() -> None:
     try:
         with sensor:
             while True:
-                print(f"{sensor.distance_mm:4d} mm")
+                distance_mm = sensor.distance_mm
+
+                if distance_mm is None:
+                    print("INVALID")
+                else:
+                    print(f"{distance_mm:4d} mm")
+
                 time.sleep(0.25)
 
     except KeyboardInterrupt:
