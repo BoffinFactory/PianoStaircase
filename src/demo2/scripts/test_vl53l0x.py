@@ -1,28 +1,24 @@
 #!/usr/bin/env python3
 
 """
-Simple VL53L0X distance-sensor diagnostic.
+VL53L0X distance-sensor diagnostic for Piano Staircase Demo 2.
 
-This program verifies that Python can communicate with the VL53L0X
-and continuously displays the measured distance in millimeters.
+Continuously displays the measured distance in millimeters.
 
 Press Ctrl+C to stop.
 """
 
 import time
 
-import board
-import busio
-import adafruit_vl53l0x
+from piano_staircase_demo.sensor import DistanceSensor
 
 
 def main() -> None:
     print("=== VL53L0X Range Diagnostic ===")
-    print("Initializing I2C and sensor...")
+    print("Initializing sensor...")
 
     try:
-        i2c = busio.I2C(board.SCL, board.SDA)
-        sensor = adafruit_vl53l0x.VL53L0X(i2c)
+        sensor = DistanceSensor()
     except Exception as exc:
         print()
         print("ERROR: Unable to initialize the VL53L0X.")
@@ -42,10 +38,10 @@ def main() -> None:
     print()
 
     try:
-        while True:
-            distance_mm = sensor.range
-            print(f"{distance_mm:4d} mm")
-            time.sleep(0.25)
+        with sensor:
+            while True:
+                print(f"{sensor.distance_mm:4d} mm")
+                time.sleep(0.25)
 
     except KeyboardInterrupt:
         print()
