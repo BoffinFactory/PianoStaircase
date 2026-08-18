@@ -18,16 +18,18 @@ echo " Piano Staircase Demo 2 Setup"
 echo "========================================"
 echo
 
-echo "[1/4] Installing Raspberry Pi OS packages..."
+echo "[1/5] Installing Raspberry Pi OS packages..."
 
 sudo apt update
 sudo apt install -y \
 	python3-lgpio \
 	python3-venv \
-	i2c-tools
+	i2c-tools \
+	bluez \
+	pipewire-audio
 
 echo
-echo "[2/4] Creating Python virtual environment..."
+echo "[2/5] Creating Python virtual environment..."
 
 if [[ -d "$VENV_PATH" ]]; then
 	echo "Virtual environment already exists:"
@@ -39,7 +41,7 @@ else
 fi
 
 echo
-echo "[3/4] Installing Python packages..."
+echo "[3/5] Installing Python packages..."
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 DEMO_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
@@ -53,7 +55,40 @@ echo "Installing Demo 2 Python package..."
 "$VENV_PATH/bin/python" -m pip install -e "$DEMO_DIR"
 
 echo
-echo "[4/4] Checking Python hardware libraries..."
+echo "[4/5] Configuring headless audio..."
+
+WIREPLUMBER_CONFIG_DIR="$HOME/.config/wireplumber/wireplumber.conf.d"
+WIREPLUMBER_CONFIG="$WIREPLUMBER_CONFIG_DIR/51-bluez-headless.conf"
+
+mkdir -p "$WIREPLUMBER_CONFIG_DIR"
+
+cat >"$WIREPLUMBER_CONFIG" <<'EOF'
+wireplumber.profiles = {
+  main = {
+    monitor.bluez.seat-monitoring = disabled
+  }
+}
+EOF
+
+echo "Installed WirePlumber configuration:"
+echo "  $WIREPLUMBER_CONFIG"
+
+if systemctl --user is-active --quiet wireplumber 2>/dev/null; then
+	systemctl --user restart wireplumber
+	echo "Restarted WirePlumber."
+fi
+
+echo
+echo "[5/5] Checking software and hardware libraries..."
+
+for command in wpctl pw-play bluetoothctl; do
+	if command -v "$command" >/dev/null; then
+		echo "$command: OK"
+	else
+		echo "ERROR: Required command not found: $command" >&2
+		exit 1
+	fi
+done
 
 "$VENV_PATH/bin/python" - <<'PY'
 import lgpio
