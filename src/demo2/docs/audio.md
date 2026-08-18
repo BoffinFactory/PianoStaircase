@@ -20,7 +20,7 @@ The display and PipeWire output both need sufficient volume:
 wpctl status
 wpctl set-volume <sink-id> 100%
 wpctl set-mute <sink-id> 0
-````
+```
 
 The display's physical volume can also be adjusted using its on-screen controls.
 
