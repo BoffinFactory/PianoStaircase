@@ -130,6 +130,18 @@ def main() -> None:
                 sample_time = time.monotonic()
                 distance_mm = sensor.distance_mm
 
+                if distance_mm == 0:
+                    elapsed = sample_time - start_time
+
+                    print(
+                        f"{elapsed:6.2f}s   "
+                        f"{distance_mm:4d} mm   "
+                        f"{'INVALID':<10}"
+                    )
+
+                    next_sample += interval
+                    continue
+
                 was_armed = trigger.armed
                 fired = trigger.update(distance_mm)
 
