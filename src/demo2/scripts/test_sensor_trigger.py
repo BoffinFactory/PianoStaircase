@@ -11,6 +11,7 @@ Press Ctrl+C to stop.
 
 import argparse
 import time
+import signal
 
 from piano_staircase_demo.sensor import DistanceSensor
 from piano_staircase_demo.trigger import DistanceTrigger
@@ -65,6 +66,14 @@ def main() -> None:
     if args.hz <= 0:
         raise SystemExit("--hz must be greater than zero.")
 
+    stop_requested = False
+
+    def request_stop(signum, frame) -> None:
+        nonlocal stop_requested
+        stop_requested = True
+
+    signal.signal(signal.SIGINT, request_stop)
+
     try:
         trigger = DistanceTrigger(
             trigger_distance_mm=args.trigger_mm,
@@ -112,7 +121,7 @@ def main() -> None:
 
     try:
         with sensor:
-            while True:
+            while not stop_requested:
                 now = time.monotonic()
 
                 if now < next_sample:
@@ -149,6 +158,8 @@ def main() -> None:
                     next_sample = time.monotonic() + interval
 
     except KeyboardInterrupt:
+        pass
+    finally:
         print()
         print("Diagnostic stopped.")
 
