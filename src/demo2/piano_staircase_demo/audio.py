@@ -21,6 +21,7 @@ from typing import Sequence
 SAMPLE_RATE = 48_000
 AMPLITUDE = 0.65
 FADE_SECONDS = 0.01
+PIPEWIRE_LATENCY = "50ms"
 
 NOTES = {
     "C4": 261.63,
@@ -196,13 +197,21 @@ class AudioSystem:
 
         if blocking:
             subprocess.run(
-                ["pw-play", str(clip.path)],
+                [
+                    "pw-play",
+                    f"--latency={PIPEWIRE_LATENCY}",
+                    str(clip.path),
+                ],
                 check=True,
             )
             return
 
         self._process = subprocess.Popen(
-            ["pw-play", str(clip.path)],
+            [
+                "pw-play",
+                f"--latency={PIPEWIRE_LATENCY}",
+                str(clip.path),
+            ],
         )
 
     def wait(self) -> None:
