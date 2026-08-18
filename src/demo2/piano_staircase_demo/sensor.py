@@ -27,13 +27,18 @@ class DistanceSensor:
         )
 
     @property
-    def distance_mm(self) -> int:
-        """Return the current measured distance in millimeters."""
+    def distance_mm(self) -> int | None:
+        """Return the current distance in millimeters, or None for an invalid reading."""
 
         if self._closed:
             raise RuntimeError("DistanceSensor is closed.")
 
-        return self._sensor.range
+        distance_mm = self._sensor.range
+
+        if distance_mm == 0:
+            return None
+
+        return distance_mm
 
     def close(self) -> None:
         """Release the I2C interface used by the sensor."""
