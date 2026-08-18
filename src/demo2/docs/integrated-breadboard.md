@@ -1,4 +1,4 @@
-# Integrated Distance Sensor Wiring
+# Demo 2 Integrated Breadboard Wiring
 
 Demo 2 uses a VL53L0X time-of-flight distance sensor connected to the Raspberry Pi Zero 2 W over
 I2C.
@@ -45,6 +45,9 @@ GND   <--- blue   --- common ground
 SCL   <--- white  --- GPIO3 / SCL1
 SDA   <--- purple --- GPIO2 / SDA1
 ```
+
+The blue wire at the sensor is a local breadboard ground jumper. The Raspberry Pi ground connection
+to the breadboard remains black, following the project's normal ground-wire convention.
 
 The unused VL53L0X pins are not required for the current Demo 2 configuration.
 

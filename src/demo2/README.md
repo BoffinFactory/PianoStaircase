@@ -111,9 +111,10 @@ Before modifying hardware, read:
 - [Raspberry Pi Hardware Safety](docs/hardware-safety.md)
 - [Breadboard Wiring Conventions](docs/breadboard-wiring.md)
 
-Sensor documentation:
+Sensor and integrated hardware documentation:
 
 - [Phase 1: Raspberry Pi and VL53L0X Setup](docs/phase-1-sensor.md)
+- [Demo 2 Integrated Breadboard Wiring](docs/integrated-breadboard.md)
 
 Lighting documentation:
 
