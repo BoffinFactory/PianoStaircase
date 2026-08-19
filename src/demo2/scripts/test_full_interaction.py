@@ -205,17 +205,7 @@ def main() -> None:
                 if fired:
                     trigger_count += 1
 
-                    if not gate.allow():
-                        cooldown_drop_count += 1
-
-                        print(
-                            f"{elapsed:6.2f}s   "
-                            f"{distance_mm:4d} mm   "
-                            f"{'TRIGGER':<10}  "
-                            f"DROP COOLDOWN"
-                        )
-
-                    elif audio.is_playing:
+                    if audio.is_playing:
                         busy_drop_count += 1
 
                         print(
@@ -223,6 +213,16 @@ def main() -> None:
                             f"{distance_mm:4d} mm   "
                             f"{'TRIGGER':<10}  "
                             f"DROP AUDIO BUSY"
+                        )
+
+                    elif not gate.allow():
+                        cooldown_drop_count += 1
+
+                        print(
+                            f"{elapsed:6.2f}s   "
+                            f"{distance_mm:4d} mm   "
+                            f"{'TRIGGER':<10}  "
+                            f"DROP COOLDOWN"
                         )
 
                     else:
