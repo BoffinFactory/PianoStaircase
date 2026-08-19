@@ -285,6 +285,11 @@ def main() -> None:
             "--special-every cannot be negative."
         )
 
+    if args.pipe_triggers < 1:
+        raise SystemExit(
+            "--pipe-triggers must be at least 1."
+        )
+
     stop_requested = False
 
     def request_stop(signum, frame) -> None:
