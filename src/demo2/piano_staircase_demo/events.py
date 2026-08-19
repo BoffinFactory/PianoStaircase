@@ -72,3 +72,76 @@ class SpecialEventDirector:
         self._last_event_index = index
 
         return self._event_names[index]
+
+
+class TemporaryEventOverride:
+    """Temporarily replace ordinary interactions with one special event."""
+
+    def __init__(self) -> None:
+        self._event_name: str | None = None
+        self._remaining_interactions = 0
+
+    @property
+    def active(self) -> bool:
+        """Return True while an override is active."""
+
+        return self._event_name is not None
+
+    @property
+    def event_name(self) -> str | None:
+        """Return the active event name, if any."""
+
+        return self._event_name
+
+    @property
+    def remaining_interactions(self) -> int:
+        """Return how many accepted interactions remain."""
+
+        return self._remaining_interactions
+
+    def activate(
+        self,
+        event_name: str,
+        *,
+        interactions: int,
+    ) -> None:
+        """Activate an event override for a fixed number of interactions."""
+
+        if not event_name:
+            raise ValueError(
+                "event_name cannot be empty."
+            )
+
+        if interactions < 1:
+            raise ValueError(
+                "interactions must be at least 1."
+            )
+
+        if self.active:
+            raise RuntimeError(
+                "A temporary event override is already active."
+            )
+
+        self._event_name = event_name
+        self._remaining_interactions = interactions
+
+    def consume(self) -> str | None:
+        """
+        Consume one accepted interaction from the active override.
+
+        Return the active event name, or None when no override is active.
+        """
+
+        if not self.active:
+            return None
+
+        assert self._event_name is not None
+
+        event_name = self._event_name
+
+        self._remaining_interactions -= 1
+
+        if self._remaining_interactions == 0:
+            self._event_name = None
+
+        return event_name
