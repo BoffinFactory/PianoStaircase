@@ -13,8 +13,8 @@ Runs the interactive tabletop demonstration using:
 
 Response selection may use cycle, random, or distance-based behavior.
 
-The current one-shot articulation periodically inserts random musical
-special events.
+The current one-shot articulation periodically inserts random special
+events, some of which may temporarily override ordinary responses.
 
 Press Ctrl+C to stop.
 """
@@ -35,7 +35,10 @@ from piano_staircase_demo.modes import (
     InteractionResponse,
     RandomMode,
 )
-from piano_staircase_demo.events import SpecialEventDirector
+from piano_staircase_demo.events import (
+    SpecialEventDirector,
+    TemporaryEventOverride,
+)
 
 
 # Current validated Demo 2 defaults.
@@ -57,6 +60,9 @@ SPECIAL_EVERY = 8
 SPECIAL_NOTE_DURATION_SECONDS = 0.10
 SPECIAL_NOTE_GAP_SECONDS = 0.04
 
+PIPE_EVENT_NAME = "pipes"
+PIPE_OVERRIDE_TRIGGERS = 4
+
 RESPONSES = (
     InteractionResponse(
         note="C4",
@@ -72,6 +78,13 @@ RESPONSES = (
     ),
 )
 
+PIPE_PLACEHOLDER_RESPONSES = (
+    RESPONSES[2],
+    RESPONSES[0],
+    RESPONSES[2],
+    RESPONSES[1],
+)
+
 SPECIAL_SEQUENCES = {
     "ascending": RESPONSES,
 
@@ -85,6 +98,8 @@ SPECIAL_SEQUENCES = {
         RESPONSES[1],
         RESPONSES[2],
     ),
+
+    PIPE_EVENT_NAME: PIPE_PLACEHOLDER_RESPONSES,
 }
 
 
@@ -246,6 +261,16 @@ def parse_args() -> argparse.Namespace:
         ),
     )
 
+    parser.add_argument(
+        "--pipe-triggers",
+        type=int,
+        default=PIPE_OVERRIDE_TRIGGERS,
+        help=(
+            "Number of accepted interactions in a temporary pipes override "
+            f"(default: {PIPE_OVERRIDE_TRIGGERS})."
+        ),
+    )
+
     return parser.parse_args()
 
 
@@ -283,6 +308,8 @@ def main() -> None:
             every_n_interactions=args.special_every,
             event_names=tuple(SPECIAL_SEQUENCES),
         )
+
+        event_override = TemporaryEventOverride()
 
         if args.response_mode == "cycle":
             mode = CycleMode(RESPONSES)
@@ -413,7 +440,24 @@ def main() -> None:
                             )
 
                     else:
-                        special_name = event_director.record_interaction()
+                        # An active temporary override takes precedence over ordinary
+                        # response selection and over scheduling another special event.
+                        special_name = event_override.consume()
+                        pipe_activated = False
+
+                        if special_name is None:
+                            special_name = event_director.record_interaction()
+
+                            if special_name == PIPE_EVENT_NAME:
+                                event_override.activate(
+                                    PIPE_EVENT_NAME,
+                                    interactions=args.pipe_triggers,
+                                )
+
+                                # The interaction that selected pipe mode becomes the first
+                                # interaction of the override.
+                                special_name = event_override.consume()
+                                pipe_activated = True
 
                         response_time = time.monotonic()
 
@@ -446,9 +490,23 @@ def main() -> None:
                                 for response in special_responses
                             )
 
-                            print(
-                                f"SPECIAL {special_name.upper()} -> {notes}"
-                            )
+                            if special_name == PIPE_EVENT_NAME:
+                                if pipe_activated:
+                                    print(
+                                        "SPECIAL PIPES MODE -> "
+                                        f"{notes} "
+                                        f"({event_override.remaining_interactions} remaining)"
+                                    )
+                                else:
+                                    print(
+                                        "PIPES OVERRIDE -> "
+                                        f"{notes} "
+                                        f"({event_override.remaining_interactions} remaining)"
+                                    )
+                            else:
+                                print(
+                                    f"SPECIAL {special_name.upper()} -> {notes}"
+                                )
 
                         else:
                             response = mode.next_response(distance_mm)
