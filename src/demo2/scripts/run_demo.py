@@ -13,8 +13,8 @@ Runs the interactive tabletop demonstration using:
 
 Response selection may use cycle, random, or distance-based behavior.
 
-The current one-shot articulation may also insert periodic musical
-flourishes.
+The current one-shot articulation periodically inserts random musical
+special events.
 
 Press Ctrl+C to stop.
 """
@@ -35,6 +35,7 @@ from piano_staircase_demo.modes import (
     InteractionResponse,
     RandomMode,
 )
+from piano_staircase_demo.events import SpecialEventDirector
 
 
 # Current validated Demo 2 defaults.
@@ -52,9 +53,9 @@ LIGHT_BRIGHTNESS_PERCENT = 100
 
 RESPONSE_MODE = "cycle"
 
-FLOURISH_EVERY = 8
-FLOURISH_NOTE_DURATION_SECONDS = 0.10
-FLOURISH_NOTE_GAP_SECONDS = 0.04
+SPECIAL_EVERY = 8
+SPECIAL_NOTE_DURATION_SECONDS = 0.10
+SPECIAL_NOTE_GAP_SECONDS = 0.04
 
 RESPONSES = (
     InteractionResponse(
@@ -71,7 +72,20 @@ RESPONSES = (
     ),
 )
 
-FLOURISH_RESPONSES = RESPONSES
+SPECIAL_SEQUENCES = {
+    "ascending": RESPONSES,
+
+    "descending": tuple(
+        reversed(RESPONSES)
+    ),
+
+    "bounce": (
+        RESPONSES[0],
+        RESPONSES[2],
+        RESPONSES[1],
+        RESPONSES[2],
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -220,13 +234,15 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--special-every",
         "--flourish-every",
+        dest="special_every",
         type=int,
-        default=FLOURISH_EVERY,
+        default=SPECIAL_EVERY,
         help=(
-            "Replace every Nth accepted interaction with a flourish; "
-            "0 disables flourishes "
-            f"(default: {FLOURISH_EVERY})."
+            "Play a random special event every N accepted interactions; "
+            "0 disables special events "
+            f"(default: {SPECIAL_EVERY})."
         ),
     )
 
@@ -239,9 +255,9 @@ def main() -> None:
     if args.hz <= 0:
         raise SystemExit("--hz must be greater than zero.")
 
-    if args.flourish_every < 0:
+    if args.special_every < 0:
         raise SystemExit(
-            "--flourish-every cannot be negative."
+            "--special-every cannot be negative."
         )
 
     stop_requested = False
@@ -262,6 +278,12 @@ def main() -> None:
         )
 
         gate = CooldownGate(args.cooldown)
+
+        event_director = SpecialEventDirector(
+            every_n_interactions=args.special_every,
+            event_names=tuple(SPECIAL_SEQUENCES),
+        )
+
         if args.response_mode == "cycle":
             mode = CycleMode(RESPONSES)
 
@@ -317,14 +339,17 @@ def main() -> None:
                 for response in RESPONSES
             }
 
-            flourish_clip = audio.create_sequence(
-                tuple(
-                    response.note
-                    for response in FLOURISH_RESPONSES
-                ),
-                note_duration_seconds=FLOURISH_NOTE_DURATION_SECONDS,
-                note_gap_seconds=FLOURISH_NOTE_GAP_SECONDS,
-            )
+            special_clips = {
+                name: audio.create_sequence(
+                    tuple(
+                        response.note
+                        for response in responses
+                    ),
+                    note_duration_seconds=SPECIAL_NOTE_DURATION_SECONDS,
+                    note_gap_seconds=SPECIAL_NOTE_GAP_SECONDS,
+                )
+                for name, responses in SPECIAL_SEQUENCES.items()
+            }
 
             lights.all_off()
 
@@ -336,7 +361,6 @@ def main() -> None:
 
             active_channel = None
             light_cues: tuple[LightCue, ...] = ()
-            accepted_interaction_count = 0
 
             while not stop_requested:
                 now = time.monotonic()
@@ -389,23 +413,20 @@ def main() -> None:
                             )
 
                     else:
-                        accepted_interaction_count += 1
-
-                        play_flourish = (
-                            args.flourish_every > 0
-                            and accepted_interaction_count
-                            % args.flourish_every
-                            == 0
-                        )
+                        special_name = event_director.record_interaction()
 
                         response_time = time.monotonic()
 
-                        if play_flourish:
+                        if special_name is not None:
+                            special_responses = SPECIAL_SEQUENCES[
+                                special_name
+                            ]
+
                             light_cues = build_light_cues(
-                                FLOURISH_RESPONSES,
+                                special_responses,
                                 start_time=response_time,
-                                duration_seconds=FLOURISH_NOTE_DURATION_SECONDS,
-                                gap_seconds=FLOURISH_NOTE_GAP_SECONDS,
+                                duration_seconds=SPECIAL_NOTE_DURATION_SECONDS,
+                                gap_seconds=SPECIAL_NOTE_GAP_SECONDS,
                             )
 
                             active_channel = update_lighting(
@@ -416,11 +437,18 @@ def main() -> None:
                             )
 
                             audio.play(
-                                flourish_clip,
+                                special_clips[special_name],
                                 blocking=False,
                             )
 
-                            print("FLOURISH -> C4 E4 G4")
+                            notes = " ".join(
+                                response.note
+                                for response in special_responses
+                            )
+
+                            print(
+                                f"SPECIAL {special_name.upper()} -> {notes}"
+                            )
 
                         else:
                             response = mode.next_response(distance_mm)
