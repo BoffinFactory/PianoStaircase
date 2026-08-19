@@ -28,6 +28,10 @@ from piano_staircase_demo.interaction import CooldownGate
 from piano_staircase_demo.lighting import LightingSystem
 from piano_staircase_demo.sensor import DistanceSensor
 from piano_staircase_demo.trigger import DistanceTrigger
+from piano_staircase_demo.modes import (
+    CycleMode,
+    InteractionResponse,
+)
 
 
 # Current validated Demo 2 defaults.
@@ -43,7 +47,20 @@ COOLDOWN_SECONDS = 0.20
 NOTE_DURATION_SECONDS = 0.15
 LIGHT_BRIGHTNESS_PERCENT = 100
 
-NOTES = ("C4", "E4", "G4")
+RESPONSES = (
+    InteractionResponse(
+        note="C4",
+        light_name="green",
+    ),
+    InteractionResponse(
+        note="E4",
+        light_name="yellow",
+    ),
+    InteractionResponse(
+        note="G4",
+        light_name="blue",
+    ),
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -141,6 +158,7 @@ def main() -> None:
         )
 
         gate = CooldownGate(args.cooldown)
+        mode = CycleMode(RESPONSES)
 
     except ValueError as exc:
         raise SystemExit(f"Invalid configuration: {exc}") from exc
@@ -161,21 +179,21 @@ def main() -> None:
             LightingSystem() as lights,
             AudioSystem() as audio,
         ):
-            channels = (
-                lights.green,
-                lights.yellow,
-                lights.blue,
-            )
+            channels = {
+                "green": lights.green,
+                "yellow": lights.yellow,
+                "blue": lights.blue,
+            }
 
             # Generate the short note clips once during startup rather than
             # rebuilding audio on every interaction.
-            clips = tuple(
-                audio.create_sequence(
-                    (note,),
+            clips = {
+                response.note: audio.create_sequence(
+                    (response.note,),
                     note_duration_seconds=NOTE_DURATION_SECONDS,
                 )
-                for note in NOTES
-            )
+                for response in RESPONSES
+            }
 
             lights.all_off()
 
@@ -184,7 +202,6 @@ def main() -> None:
             print()
 
             next_sample = time.monotonic()
-            next_note_index = 0
 
             active_channel = None
             light_off_time = 0.0
@@ -235,9 +252,11 @@ def main() -> None:
                             )
 
                     else:
-                        note = NOTES[next_note_index]
-                        clip = clips[next_note_index]
-                        channel = channels[next_note_index]
+                        response = mode.next_response(distance_mm)
+
+                        note = response.note
+                        clip = clips[note]
+                        channel = channels[response.light_name]
 
                         if active_channel is not None:
                             active_channel.off()
@@ -266,10 +285,6 @@ def main() -> None:
                         print(
                             f"{note} -> {channel.name}"
                         )
-
-                        next_note_index = (
-                            next_note_index + 1
-                        ) % len(NOTES)
 
                 next_sample += interval
 
