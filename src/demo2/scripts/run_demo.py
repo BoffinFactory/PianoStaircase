@@ -31,6 +31,7 @@ from piano_staircase_demo.trigger import DistanceTrigger
 from piano_staircase_demo.modes import (
     CycleMode,
     InteractionResponse,
+    RandomMode,
 )
 
 
@@ -46,6 +47,8 @@ COOLDOWN_SECONDS = 0.20
 
 NOTE_DURATION_SECONDS = 0.15
 LIGHT_BRIGHTNESS_PERCENT = 100
+
+RESPONSE_MODE = "cycle"
 
 RESPONSES = (
     InteractionResponse(
@@ -131,6 +134,16 @@ def parse_args() -> argparse.Namespace:
         help="Display dropped and invalid interactions.",
     )
 
+    parser.add_argument(
+        "--response-mode",
+        choices=("cycle", "random"),
+        default=RESPONSE_MODE,
+        help=(
+            "How accepted interactions select responses "
+            f"(default: {RESPONSE_MODE})."
+        ),
+    )
+
     return parser.parse_args()
 
 
@@ -158,7 +171,14 @@ def main() -> None:
         )
 
         gate = CooldownGate(args.cooldown)
-        mode = CycleMode(RESPONSES)
+        if args.response_mode == "cycle":
+            mode = CycleMode(RESPONSES)
+        elif args.response_mode == "random":
+            mode = RandomMode(RESPONSES)
+        else:
+            raise AssertionError(
+                f"Unhandled response mode: {args.response_mode}"
+            )
 
     except ValueError as exc:
         raise SystemExit(f"Invalid configuration: {exc}") from exc
@@ -168,6 +188,8 @@ def main() -> None:
     print("C4 -> GREEN")
     print("E4 -> YELLOW")
     print("G4 -> BLUE")
+    print()
+    print(f"Response mode: {args.response_mode}")
     print()
     print("Initializing hardware...")
 
