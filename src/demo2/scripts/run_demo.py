@@ -30,6 +30,7 @@ from piano_staircase_demo.sensor import DistanceSensor
 from piano_staircase_demo.trigger import DistanceTrigger
 from piano_staircase_demo.modes import (
     CycleMode,
+    DistanceMode,
     InteractionResponse,
     RandomMode,
 )
@@ -136,7 +137,7 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--response-mode",
-        choices=("cycle", "random"),
+        choices=("cycle", "random", "distance"),
         default=RESPONSE_MODE,
         help=(
             "How accepted interactions select responses "
@@ -173,8 +174,17 @@ def main() -> None:
         gate = CooldownGate(args.cooldown)
         if args.response_mode == "cycle":
             mode = CycleMode(RESPONSES)
+
         elif args.response_mode == "random":
             mode = RandomMode(RESPONSES)
+
+        elif args.response_mode == "distance":
+            mode = DistanceMode(
+                RESPONSES,
+                minimum_distance_mm=1,
+                maximum_distance_mm=args.trigger_mm,
+            )
+
         else:
             raise AssertionError(
                 f"Unhandled response mode: {args.response_mode}"
