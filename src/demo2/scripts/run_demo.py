@@ -3,18 +3,18 @@
 """
 Piano Staircase Demo 2 application.
 
-Runs the current interactive tabletop demonstration using:
+Runs the interactive tabletop demonstration using:
 
     VL53L0X distance sensing
         -> proximity trigger/rearm logic
         -> interaction rate limiting
-        -> synchronized musical note and lighting response
+        -> response selection
+        -> synchronized musical and lighting output
 
-Accepted interactions cycle through:
+Response selection may use cycle, random, or distance-based behavior.
 
-    C4 -> GREEN
-    E4 -> YELLOW
-    G4 -> BLUE
+The current one-shot articulation may also insert periodic musical
+flourishes.
 
 Press Ctrl+C to stop.
 """
@@ -22,6 +22,7 @@ Press Ctrl+C to stop.
 import argparse
 import signal
 import time
+from dataclasses import dataclass
 
 from piano_staircase_demo.audio import AudioSystem
 from piano_staircase_demo.interaction import CooldownGate
@@ -51,6 +52,10 @@ LIGHT_BRIGHTNESS_PERCENT = 100
 
 RESPONSE_MODE = "cycle"
 
+FLOURISH_EVERY = 8
+FLOURISH_NOTE_DURATION_SECONDS = 0.10
+FLOURISH_NOTE_GAP_SECONDS = 0.04
+
 RESPONSES = (
     InteractionResponse(
         note="C4",
@@ -65,6 +70,75 @@ RESPONSES = (
         light_name="blue",
     ),
 )
+
+FLOURISH_RESPONSES = RESPONSES
+
+
+@dataclass(frozen=True)
+class LightCue:
+    """One timed lighting event."""
+
+    light_name: str
+    start_time: float
+    end_time: float
+
+
+def build_light_cues(
+    responses: tuple[InteractionResponse, ...],
+    *,
+    start_time: float,
+    duration_seconds: float,
+    gap_seconds: float = 0.0,
+) -> tuple[LightCue, ...]:
+    """Build absolute-time lighting cues for a response sequence."""
+
+    cues = []
+    cue_start = start_time
+
+    for response in responses:
+        cue_end = cue_start + duration_seconds
+
+        cues.append(
+            LightCue(
+                light_name=response.light_name,
+                start_time=cue_start,
+                end_time=cue_end,
+            )
+        )
+
+        cue_start = cue_end + gap_seconds
+
+    return tuple(cues)
+
+
+def update_lighting(
+    *,
+    cues: tuple[LightCue, ...],
+    channels: dict,
+    active_channel,
+    now: float,
+):
+    """Apply the lighting state required by the current cue schedule."""
+
+    desired_channel = None
+
+    for cue in cues:
+        if cue.start_time <= now < cue.end_time:
+            desired_channel = channels[cue.light_name]
+            break
+
+    if desired_channel is active_channel:
+        return active_channel
+
+    if active_channel is not None:
+        active_channel.off()
+
+    if desired_channel is not None:
+        desired_channel.set_brightness(
+            LIGHT_BRIGHTNESS_PERCENT
+        )
+
+    return desired_channel
 
 
 def parse_args() -> argparse.Namespace:
@@ -145,6 +219,17 @@ def parse_args() -> argparse.Namespace:
         ),
     )
 
+    parser.add_argument(
+        "--flourish-every",
+        type=int,
+        default=FLOURISH_EVERY,
+        help=(
+            "Replace every Nth accepted interaction with a flourish; "
+            "0 disables flourishes "
+            f"(default: {FLOURISH_EVERY})."
+        ),
+    )
+
     return parser.parse_args()
 
 
@@ -153,6 +238,11 @@ def main() -> None:
 
     if args.hz <= 0:
         raise SystemExit("--hz must be greater than zero.")
+
+    if args.flourish_every < 0:
+        raise SystemExit(
+            "--flourish-every cannot be negative."
+        )
 
     stop_requested = False
 
@@ -227,6 +317,15 @@ def main() -> None:
                 for response in RESPONSES
             }
 
+            flourish_clip = audio.create_sequence(
+                tuple(
+                    response.note
+                    for response in FLOURISH_RESPONSES
+                ),
+                note_duration_seconds=FLOURISH_NOTE_DURATION_SECONDS,
+                note_gap_seconds=FLOURISH_NOTE_GAP_SECONDS,
+            )
+
             lights.all_off()
 
             print("Ready.")
@@ -236,7 +335,8 @@ def main() -> None:
             next_sample = time.monotonic()
 
             active_channel = None
-            light_off_time = 0.0
+            light_cues: tuple[LightCue, ...] = ()
+            accepted_interaction_count = 0
 
             while not stop_requested:
                 now = time.monotonic()
@@ -246,13 +346,18 @@ def main() -> None:
 
                 sample_time = time.monotonic()
 
-                # Lighting is timed without blocking the sensor loop.
+                active_channel = update_lighting(
+                    cues=light_cues,
+                    channels=channels,
+                    active_channel=active_channel,
+                    now=sample_time,
+                )
+
                 if (
-                    active_channel is not None
-                    and sample_time >= light_off_time
+                    light_cues
+                    and sample_time >= light_cues[-1].end_time
                 ):
-                    active_channel.off()
-                    active_channel = None
+                    light_cues = ()
 
                 distance_mm = sensor.distance_mm
 
@@ -284,39 +389,68 @@ def main() -> None:
                             )
 
                     else:
-                        response = mode.next_response(distance_mm)
+                        accepted_interaction_count += 1
 
-                        note = response.note
-                        clip = clips[note]
-                        channel = channels[response.light_name]
-
-                        if active_channel is not None:
-                            active_channel.off()
-
-                        channel.set_brightness(
-                            LIGHT_BRIGHTNESS_PERCENT
+                        play_flourish = (
+                            args.flourish_every > 0
+                            and accepted_interaction_count
+                            % args.flourish_every
+                            == 0
                         )
 
-                        active_channel = channel
-
-                        # Use a fresh timestamp here so the light duration
-                        # begins when the response actually starts rather
-                        # than before the sensor read.
                         response_time = time.monotonic()
 
-                        light_off_time = (
-                            response_time
-                            + NOTE_DURATION_SECONDS
-                        )
+                        if play_flourish:
+                            light_cues = build_light_cues(
+                                FLOURISH_RESPONSES,
+                                start_time=response_time,
+                                duration_seconds=FLOURISH_NOTE_DURATION_SECONDS,
+                                gap_seconds=FLOURISH_NOTE_GAP_SECONDS,
+                            )
 
-                        audio.play(
-                            clip,
-                            blocking=False,
-                        )
+                            active_channel = update_lighting(
+                                cues=light_cues,
+                                channels=channels,
+                                active_channel=active_channel,
+                                now=response_time,
+                            )
 
-                        print(
-                            f"{note} -> {channel.name}"
-                        )
+                            audio.play(
+                                flourish_clip,
+                                blocking=False,
+                            )
+
+                            print("FLOURISH -> C4 E4 G4")
+
+                        else:
+                            response = mode.next_response(distance_mm)
+
+                            note = response.note
+                            clip = clips[note]
+
+                            light_cues = build_light_cues(
+                                (response,),
+                                start_time=response_time,
+                                duration_seconds=NOTE_DURATION_SECONDS,
+                            )
+
+                            active_channel = update_lighting(
+                                cues=light_cues,
+                                channels=channels,
+                                active_channel=active_channel,
+                                now=response_time,
+                            )
+
+                            audio.play(
+                                clip,
+                                blocking=False,
+                            )
+
+                            channel = channels[response.light_name]
+
+                            print(
+                                f"{note} -> {channel.name}"
+                            )
 
                 next_sample += interval
 
