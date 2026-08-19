@@ -9,6 +9,7 @@ how long a note is sustained, or directly control hardware.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import random
 
 
 @dataclass(frozen=True)
@@ -52,3 +53,48 @@ class CycleMode:
         ) % len(self._responses)
 
         return response
+
+
+class RandomMode:
+    """Choose responses randomly without immediately repeating one."""
+
+    def __init__(
+        self,
+        responses: tuple[InteractionResponse, ...],
+    ) -> None:
+        if not responses:
+            raise ValueError(
+                "RandomMode requires at least one response."
+            )
+
+        self._responses = responses
+        self._last_index: int | None = None
+
+    def next_response(
+        self,
+        distance_mm: int | None = None,
+    ) -> InteractionResponse:
+        """
+        Return a randomly selected response.
+
+        When more than one response is available, the immediately previous
+        response is excluded so repeated interactions do not produce the
+        same response twice in a row.
+
+        distance_mm is accepted so that response modes share a useful
+        interface. RandomMode does not currently use the distance value.
+        """
+
+        if len(self._responses) == 1:
+            return self._responses[0]
+
+        available_indices = [
+            index
+            for index in range(len(self._responses))
+            if index != self._last_index
+        ]
+
+        index = random.choice(available_indices)
+        self._last_index = index
+
+        return self._responses[index]
