@@ -10,7 +10,9 @@ The application connects the Demo 2 subsystems:
         -> interaction rate limiting
         -> response selection / special events
         -> synchronized lighting and audio
-        -> optional terminal presentation display
+
+An optional terminal presentation runs in a separate process so graphical
+rendering cannot delay the timing-sensitive hardware loop.
 
 The main control loop is intentionally kept small. Individual tasks are
 handled by helper functions so future students can study or modify one
@@ -27,12 +29,12 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from rich.console import Console
-from rich.live import Live
-
 from piano_staircase_demo.audio import (
     AudioClip,
     AudioSystem,
+)
+from piano_staircase_demo.display_process import (
+    DisplayProcess,
 )
 from piano_staircase_demo.events import (
     SpecialEventDirector,
@@ -52,7 +54,6 @@ from piano_staircase_demo.modes import (
 from piano_staircase_demo.sensor import DistanceSensor
 from piano_staircase_demo.terminal_display import (
     DisplayState,
-    TerminalDisplay,
 )
 from piano_staircase_demo.trigger import DistanceTrigger
 
@@ -82,6 +83,9 @@ SPECIAL_NOTE_GAP_SECONDS = 0.04
 PIPE_EVENT_NAME = "pipes"
 PIPE_OVERRIDE_TRIGGERS = 4
 
+# Terminal rendering is intentionally slower than sensor polling.
+# The display runs in a separate process, so this no longer determines
+# how often the hardware loop itself gets CPU time.
 DISPLAY_HZ = 5.0
 DISPLAY_RESPONSE_HOLD_SECONDS = 0.75
 
@@ -159,7 +163,11 @@ class PlaybackPlan:
     sequence.
     """
 
-    responses: tuple[InteractionResponse, ...]
+    responses: tuple[
+        InteractionResponse,
+        ...
+    ]
+
     clip: AudioClip
 
     note_duration_seconds: float
@@ -175,7 +183,10 @@ class RuntimeState:
 
     active_channel: LightingChannel | None = None
 
-    light_cues: tuple[LightCue, ...] = ()
+    light_cues: tuple[
+        LightCue,
+        ...
+    ] = ()
 
     last_interaction_time: float | None = None
     last_response_time: float | None = None
@@ -183,17 +194,6 @@ class RuntimeState:
     display_note: str | None = None
     display_light_name: str | None = None
     display_special_text: str | None = None
-
-
-@dataclass
-class DisplaySession:
-    """Resources and timing used by the optional terminal display."""
-
-    display: TerminalDisplay
-    live: Live
-
-    update_interval_seconds: float
-    next_update_time: float
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +205,8 @@ def parse_args() -> argparse.Namespace:
 
     parser = argparse.ArgumentParser(
         description=(
-            "Run the Piano Staircase Demo 2 tabletop application."
+            "Run the Piano Staircase Demo 2 "
+            "tabletop application."
         )
     )
 
@@ -264,8 +265,10 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=COOLDOWN_SECONDS,
         help=(
-            "Minimum interval between accepted interactions "
-            f"(default: {COOLDOWN_SECONDS:.2f} seconds)."
+            "Minimum interval between accepted "
+            "interactions "
+            f"(default: {COOLDOWN_SECONDS:.2f} "
+            "seconds)."
         ),
     )
 
@@ -278,7 +281,8 @@ def parse_args() -> argparse.Namespace:
         ),
         default=RESPONSE_MODE,
         help=(
-            "How accepted interactions select responses "
+            "How accepted interactions select "
+            "responses "
             f"(default: {RESPONSE_MODE})."
         ),
     )
@@ -290,8 +294,9 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=SPECIAL_EVERY,
         help=(
-            "Play a random special event every N accepted "
-            "interactions; 0 disables special events "
+            "Play a random special event every N "
+            "accepted interactions; 0 disables "
+            "special events "
             f"(default: {SPECIAL_EVERY})."
         ),
     )
@@ -301,8 +306,8 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=PIPE_OVERRIDE_TRIGGERS,
         help=(
-            "Number of accepted interactions in a temporary "
-            "pipes override "
+            "Number of accepted interactions in a "
+            "temporary pipes override "
             f"(default: {PIPE_OVERRIDE_TRIGGERS})."
         ),
     )
@@ -310,13 +315,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--display",
         action="store_true",
-        help="Show the live terminal presentation display.",
+        help=(
+            "Show the terminal presentation in a "
+            "separate process."
+        ),
     )
 
     parser.add_argument(
         "--verbose",
         action="store_true",
-        help="Display dropped and invalid interactions.",
+        help=(
+            "Display dropped and invalid interactions."
+        ),
     )
 
     return parser.parse_args()
@@ -370,7 +380,8 @@ def create_response_mode(
         )
 
     raise AssertionError(
-        f"Unhandled response mode: {args.response_mode}"
+        f"Unhandled response mode: "
+        f"{args.response_mode}"
     )
 
 
@@ -385,7 +396,9 @@ def create_audio_clips(
     note_clips = {
         response.note: audio.create_sequence(
             (response.note,),
-            note_duration_seconds=NOTE_DURATION_SECONDS,
+            note_duration_seconds=(
+                NOTE_DURATION_SECONDS
+            ),
         )
         for response in RESPONSES
     }
@@ -418,15 +431,21 @@ def print_startup_summary(
 ) -> None:
     """Print the startup configuration."""
 
-    print("=== Piano Staircase Demo 2 ===")
+    print(
+        "=== Piano Staircase Demo 2 ==="
+    )
     print()
+
     print("C4 -> GREEN")
     print("E4 -> YELLOW")
     print("G4 -> BLUE")
     print()
+
     print(
-        f"Response mode: {args.response_mode}"
+        f"Response mode: "
+        f"{args.response_mode}"
     )
+
     print(
         "Terminal display: "
         + (
@@ -435,6 +454,7 @@ def print_startup_summary(
             else "disabled"
         )
     )
+
     print()
     print("Initializing hardware...")
 
@@ -452,7 +472,10 @@ def build_light_cues(
     start_time: float,
     duration_seconds: float,
     gap_seconds: float = 0.0,
-) -> tuple[LightCue, ...]:
+) -> tuple[
+    LightCue,
+    ...
+]:
     """Build timed lighting cues for a response sequence."""
 
     cues = []
@@ -466,7 +489,9 @@ def build_light_cues(
 
         cues.append(
             LightCue(
-                light_name=response.light_name,
+                light_name=(
+                    response.light_name
+                ),
                 start_time=cue_start,
                 end_time=cue_end,
             )
@@ -477,21 +502,29 @@ def build_light_cues(
             + gap_seconds
         )
 
-    return tuple(cues)
+    return tuple(
+        cues
+    )
 
 
 def choose_active_light(
     *,
-    cues: tuple[LightCue, ...],
+    cues: tuple[
+        LightCue,
+        ...
+    ],
     channels: dict[
         str,
         LightingChannel,
     ],
-    active_channel: LightingChannel | None,
+    active_channel: (
+        LightingChannel
+        | None
+    ),
     now: float,
 ) -> LightingChannel | None:
     """
-    Apply the light that should be active at the current time.
+    Apply the light that should be active now.
 
     Returns the newly active channel, or None if all channels should be off.
     """
@@ -666,28 +699,32 @@ def build_special_plan(
 
     else:
         console_message = (
-            f"SPECIAL "
+            "SPECIAL "
             f"{special_name.upper()} "
             f"-> {notes}"
         )
 
         special_text = (
-            f"SPECIAL // "
+            "SPECIAL // "
             f"{special_name.upper()}"
         )
 
     return PlaybackPlan(
         responses=responses,
-        clip=special_clips[
-            special_name
-        ],
+        clip=(
+            special_clips[
+                special_name
+            ]
+        ),
         note_duration_seconds=(
             SPECIAL_NOTE_DURATION_SECONDS
         ),
         note_gap_seconds=(
             SPECIAL_NOTE_GAP_SECONDS
         ),
-        console_message=console_message,
+        console_message=(
+            console_message
+        ),
         special_text=special_text,
     )
 
@@ -711,9 +748,11 @@ def build_ordinary_plan(
         responses=(
             response,
         ),
-        clip=note_clips[
-            response.note
-        ],
+        clip=(
+            note_clips[
+                response.note
+            ]
+        ),
         note_duration_seconds=(
             NOTE_DURATION_SECONDS
         ),
@@ -741,25 +780,37 @@ def choose_playback_plan(
         AudioClip,
     ],
 ) -> PlaybackPlan:
-    """
-    Decide whether this accepted interaction is ordinary or special.
-    """
+    """Decide whether an accepted interaction is ordinary or special."""
 
     (
         special_name,
         pipe_activated,
     ) = choose_special_event(
-        event_director=event_director,
-        event_override=event_override,
-        pipe_triggers=args.pipe_triggers,
+        event_director=(
+            event_director
+        ),
+        event_override=(
+            event_override
+        ),
+        pipe_triggers=(
+            args.pipe_triggers
+        ),
     )
 
     if special_name is not None:
         return build_special_plan(
-            special_name=special_name,
-            pipe_activated=pipe_activated,
-            event_override=event_override,
-            special_clips=special_clips,
+            special_name=(
+                special_name
+            ),
+            pipe_activated=(
+                pipe_activated
+            ),
+            event_override=(
+                event_override
+            ),
+            special_clips=(
+                special_clips
+            ),
         )
 
     return build_ordinary_plan(
@@ -892,18 +943,20 @@ def handle_trigger(
 
         return None
 
-    # Decide what this interaction should do.
     plan = choose_playback_plan(
         distance_mm=distance_mm,
         args=args,
         mode=mode,
-        event_director=event_director,
-        event_override=event_override,
+        event_director=(
+            event_director
+        ),
+        event_override=(
+            event_override
+        ),
         note_clips=note_clips,
         special_clips=special_clips,
     )
 
-    # Start its audio and lights.
     start_playback(
         plan,
         audio=audio,
@@ -915,27 +968,29 @@ def handle_trigger(
 
 
 # ---------------------------------------------------------------------------
-# Terminal presentation display
+# Terminal presentation state
 # ---------------------------------------------------------------------------
 
 def display_code_stage(
     *,
-    interaction_time: float | None,
+    interaction_time: (
+        float
+        | None
+    ),
     now: float,
 ) -> str:
     """
     Choose the simulated code line highlighted on the display.
 
-    Real execution happens too quickly for visitors to watch, so the display
-    deliberately slows the logical flow without slowing the hardware.
+    The real operations happen too quickly for visitors to watch, so only
+    their visual representation is deliberately slowed.
     """
 
     if interaction_time is None:
         return "sensor"
 
     elapsed = (
-        now
-        - interaction_time
+        now - interaction_time
     )
 
     if elapsed < 0.15:
@@ -953,48 +1008,128 @@ def display_code_stage(
     return "sensor"
 
 
-def start_terminal_display(
+def clear_expired_display_response(
+    runtime: RuntimeState,
+    *,
+    audio: AudioSystem,
+    now: float,
+) -> None:
+    """Return presentation state to idle after a completed response."""
+
+    if (
+        runtime.last_response_time
+        is None
+    ):
+        return
+
+    if (
+        now
+        - runtime.last_response_time
+        < DISPLAY_RESPONSE_HOLD_SECONDS
+    ):
+        return
+
+    if audio.is_playing:
+        return
+
+    if runtime.active_channel is not None:
+        return
+
+    runtime.display_note = None
+    runtime.display_light_name = None
+    runtime.display_special_text = None
+
+
+def build_display_state(
+    *,
     args: argparse.Namespace,
-) -> DisplaySession | None:
-    """Start the optional Rich presentation display."""
+    runtime: RuntimeState,
+    audio: AudioSystem,
+    distance_mm: int | None,
+    now: float,
+) -> DisplayState:
+    """Build a small snapshot for the presentation process."""
+
+    clear_expired_display_response(
+        runtime,
+        audio=audio,
+        now=now,
+    )
+
+    interaction_is_recent = (
+        runtime.last_interaction_time
+        is not None
+        and (
+            now
+            - runtime.last_interaction_time
+        )
+        < 0.75
+    )
+
+    trigger_state = (
+        "FIRED"
+        if interaction_is_recent
+        else "ARMED"
+    )
+
+    # During a multi-light special sequence, report the channel that is
+    # physically active right now.
+    if runtime.active_channel is not None:
+        light_name = (
+            runtime.active_channel
+            .name
+            .lower()
+        )
+    else:
+        light_name = (
+            runtime.display_light_name
+        )
+
+    return DisplayState(
+        distance_mm=distance_mm,
+        trigger_state=trigger_state,
+        response_mode=(
+            args.response_mode
+        ),
+        note=runtime.display_note,
+        light_name=light_name,
+        output_active=(
+            runtime.active_channel
+            is not None
+        ),
+        audio_active=(
+            audio.is_playing
+        ),
+        code_stage=display_code_stage(
+            interaction_time=(
+                runtime
+                .last_interaction_time
+            ),
+            now=now,
+        ),
+        special_text=(
+            runtime
+            .display_special_text
+        ),
+    )
+
+
+def start_display_process(
+    args: argparse.Namespace,
+) -> DisplayProcess | None:
+    """Start the optional presentation process."""
 
     if not args.display:
         return None
 
     try:
-        console = Console()
-
-        display = TerminalDisplay(
-            console
-        )
-
-        initial_state = DisplayState(
-            response_mode=(
-                args.response_mode
+        return DisplayProcess.start(
+            initial_state=DisplayState(
+                response_mode=(
+                    args.response_mode
+                ),
             ),
-        )
-
-        live = Live(
-            display.render(
-                initial_state,
-                now_seconds=0.0,
-            ),
-            console=console,
-            screen=True,
-            auto_refresh=False,
-        )
-
-        live.start()
-
-        return DisplaySession(
-            display=display,
-            live=live,
-            update_interval_seconds=(
-                1.0 / DISPLAY_HZ
-            ),
-            next_update_time=(
-                time.monotonic()
-            ),
+            refresh_hz=DISPLAY_HZ,
         )
 
     except Exception as exc:
@@ -1011,146 +1146,66 @@ def start_terminal_display(
         return None
 
 
-def stop_terminal_display(
-    session: DisplaySession | None,
-) -> None:
-    """Stop the terminal display and restore the normal console."""
-
-    if session is not None:
-        session.live.stop()
-
-
-def refresh_terminal_display(
-    session: DisplaySession | None,
+def publish_display_state(
+    display_process: (
+        DisplayProcess
+        | None
+    ),
     *,
     args: argparse.Namespace,
     runtime: RuntimeState,
     audio: AudioSystem,
     distance_mm: int | None,
-    sample_time: float,
-) -> DisplaySession | None:
+    now: float,
+) -> DisplayProcess | None:
     """
-    Refresh the visitor-facing display.
+    Publish the newest presentation state without waiting for rendering.
 
-    The sensor runs at 30 Hz by default, while this display refreshes at
-    only 10 Hz. There is no need to redraw a terminal as quickly as the
-    sensor is sampled.
+    If the display process fails, disable presentation and allow the physical
+    demo to continue normally.
     """
 
-    if session is None:
+    if display_process is None:
         return None
 
-    if (
-        sample_time
-        < session.next_update_time
+    state = build_display_state(
+        args=args,
+        runtime=runtime,
+        audio=audio,
+        distance_mm=distance_mm,
+        now=now,
+    )
+
+    if display_process.publish(
+        state
     ):
-        return session
+        return display_process
 
-    try:
-        now = time.monotonic()
+    error_message = (
+        display_process.error_message()
+    )
 
-        # Once the physical response has ended, leave the result visible
-        # briefly and then return the display to its idle state.
-        if (
-            runtime.last_response_time
-            is not None
-            and (
-                now
-                - runtime.last_response_time
-            )
-            >= DISPLAY_RESPONSE_HOLD_SECONDS
-            and not audio.is_playing
-            and runtime.active_channel
-            is None
-        ):
-            runtime.display_note = None
-            runtime.display_light_name = None
-            runtime.display_special_text = None
+    display_process.close()
 
-        interaction_is_recent = (
-            runtime.last_interaction_time
-            is not None
-            and (
-                now
-                - runtime.last_interaction_time
-            )
-            < 0.75
-        )
+    print()
 
-        if interaction_is_recent:
-            trigger_state = "FIRED"
-        else:
-            trigger_state = "ARMED"
-
-        # During a multi-light sequence, show the channel that is actually
-        # active right now. Otherwise retain the last selected response.
-        if runtime.active_channel is not None:
-            display_light_name = (
-                runtime
-                .active_channel
-                .name
-                .lower()
-            )
-        else:
-            display_light_name = (
-                runtime.display_light_name
-            )
-
-        display_state = DisplayState(
-            distance_mm=distance_mm,
-            trigger_state=trigger_state,
-            response_mode=(
-                args.response_mode
-            ),
-            note=runtime.display_note,
-            light_name=display_light_name,
-            output_active=(
-                runtime.active_channel
-                is not None
-            ),
-            audio_active=audio.is_playing,
-            code_stage=display_code_stage(
-                interaction_time=(
-                    runtime
-                    .last_interaction_time
-                ),
-                now=now,
-            ),
-            special_text=(
-                runtime.display_special_text
-            ),
-        )
-
-        session.live.update(
-            session.display.render(
-                display_state,
-                now_seconds=now,
-            ),
-            refresh=True,
-        )
-
-        session.next_update_time = (
-            now
-            + session.update_interval_seconds
-        )
-
-        return session
-
-    except Exception as exc:
-        session.live.stop()
-
-        print()
+    if error_message is None:
         print(
             "WARNING: Terminal display "
-            f"failed: {exc}"
+            "process stopped unexpectedly."
         )
-
+    else:
         print(
-            "Continuing without the "
-            "presentation display."
+            "WARNING: Terminal display "
+            f"failed: {error_message}"
         )
 
-        return None
+    print(
+        "Continuing without the "
+        "presentation display."
+    )
+
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -1199,13 +1254,15 @@ def run_demo(
     """
     Initialize the hardware and run the Demo 2 control loop.
 
-    The loop intentionally reads like a short checklist:
+    The timing-sensitive loop remains intentionally short:
 
         update lights
         read sensor
         handle trigger
-        update display
+        publish display state
         schedule next poll
+
+    Rich rendering itself happens in another process.
     """
 
     trigger = DistanceTrigger(
@@ -1231,13 +1288,15 @@ def run_demo(
         args
     )
 
-    event_director = SpecialEventDirector(
-        every_n_interactions=(
-            args.special_every
-        ),
-        event_names=tuple(
-            SPECIAL_SEQUENCES
-        ),
+    event_director = (
+        SpecialEventDirector(
+            every_n_interactions=(
+                args.special_every
+            ),
+            event_names=tuple(
+                SPECIAL_SEQUENCES
+            ),
+        )
     )
 
     event_override = (
@@ -1277,8 +1336,8 @@ def run_demo(
         print("Press Ctrl+C to stop.")
         print()
 
-        display_session = (
-            start_terminal_display(
+        display_process = (
+            start_display_process(
                 args
             )
         )
@@ -1290,7 +1349,7 @@ def run_demo(
         try:
             while not should_stop():
 
-                # 1. Wait for the next 30 Hz sensor poll.
+                # 1. Wait for the next sensor poll.
                 now = time.monotonic()
 
                 if now < next_sample:
@@ -1302,7 +1361,7 @@ def run_demo(
                     time.monotonic()
                 )
 
-                # 2. Advance any lighting sequence already in progress.
+                # 2. Advance any lighting response already in progress.
                 update_lighting(
                     runtime,
                     channels=channels,
@@ -1314,11 +1373,11 @@ def run_demo(
                     sensor.distance_mm
                 )
 
-                # 4. Feed valid readings into the trigger logic.
+                # 4. Give valid readings to the trigger/rearm logic.
                 if distance_mm is None:
                     if (
                         args.verbose
-                        and display_session
+                        and display_process
                         is None
                     ):
                         print(
@@ -1326,47 +1385,59 @@ def run_demo(
                         )
 
                 else:
-                    fired = trigger.update(
-                        distance_mm
+                    fired = (
+                        trigger.update(
+                            distance_mm
+                        )
                     )
 
                     if fired:
-                        message = handle_trigger(
-                            distance_mm=distance_mm,
-                            args=args,
-                            gate=gate,
-                            mode=mode,
-                            event_director=(
-                                event_director
-                            ),
-                            event_override=(
-                                event_override
-                            ),
-                            audio=audio,
-                            note_clips=note_clips,
-                            special_clips=(
-                                special_clips
-                            ),
-                            channels=channels,
-                            runtime=runtime,
+                        message = (
+                            handle_trigger(
+                                distance_mm=(
+                                    distance_mm
+                                ),
+                                args=args,
+                                gate=gate,
+                                mode=mode,
+                                event_director=(
+                                    event_director
+                                ),
+                                event_override=(
+                                    event_override
+                                ),
+                                audio=audio,
+                                note_clips=(
+                                    note_clips
+                                ),
+                                special_clips=(
+                                    special_clips
+                                ),
+                                channels=channels,
+                                runtime=runtime,
+                            )
                         )
 
                         if (
                             message is not None
-                            and display_session
+                            and display_process
                             is None
                         ):
-                            print(message)
+                            print(
+                                message
+                            )
 
-                # 5. Refresh the visitor display at 10 Hz.
-                display_session = (
-                    refresh_terminal_display(
-                        display_session,
+                # 5. Publish a tiny state snapshot. This never waits for Rich.
+                display_process = (
+                    publish_display_state(
+                        display_process,
                         args=args,
                         runtime=runtime,
                         audio=audio,
-                        distance_mm=distance_mm,
-                        sample_time=sample_time,
+                        distance_mm=(
+                            distance_mm
+                        ),
+                        now=sample_time,
                     )
                 )
 
@@ -1381,9 +1452,11 @@ def run_demo(
                 )
 
         finally:
-            stop_terminal_display(
-                display_session
-            )
+            if (
+                display_process
+                is not None
+            ):
+                display_process.close()
 
 
 # ---------------------------------------------------------------------------
