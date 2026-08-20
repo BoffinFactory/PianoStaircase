@@ -9,7 +9,7 @@ description = "Software for the Piano Staircase Demo 2 tabletop demonstration"
 readme = "README.md"
 requires-python = ">=3.13"
 license = "MIT"
-dependencies = ["adafruit-blinka", "adafruit-circuitpython-vl53l0x"]
+dependencies = ["adafruit-blinka", "adafruit-circuitpython-vl53l0x", "rich"]
 
 [tool.setuptools.packages.find]
 where = ["."]
