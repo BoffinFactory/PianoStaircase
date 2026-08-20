@@ -206,12 +206,12 @@ class TerminalDisplay:
         self,
         state: DisplayState,
     ) -> Panel:
-        """Build the hardware/software signal-flow diagram."""
+        """Build the simplified hardware/software signal-flow diagram."""
 
         signal = Text()
 
         signal.append(
-            " [VL53L0X]",
+            "[VL53L0X]",
             style="bold bright_cyan",
         )
 
@@ -221,52 +221,59 @@ class TerminalDisplay:
         )
 
         signal.append(
-            "[Pi Zero 2 W]\n",
+            "[Pi Zero 2 W]",
             style="bold bright_white",
         )
 
+        signal.append("\n\n")
+
         signal.append(
-            "                         │\n",
-            style="bright_black",
+            "GPIO",
+            style="bold bright_cyan",
         )
 
         signal.append(
-            "                  ┌──────┴──────┐\n",
-            style="bright_black",
-        )
-
-        signal.append(
-            "                  │             │\n",
-            style="bright_black",
-        )
-
-        signal.append(
-            "                GPIO         PipeWire\n",
+            " ──▶ ",
             style="cyan",
         )
 
         signal.append(
-            "                  │             │\n",
-            style="bright_black",
+            "[2N2222]",
+            style="bold bright_white",
         )
 
         signal.append(
-            "              [2N2222]       [audio]\n",
-            style="bright_white",
+            " ──▶ ",
+            style="cyan",
         )
 
         signal.append(
-            "                  │             │\n",
-            style="bright_black",
+            "[LEDs]",
+            style="bold bright_white",
+        )
+
+        signal.append("\n")
+
+        signal.append(
+            "Audio",
+            style="bold bright_cyan",
         )
 
         signal.append(
-            "                [LEDs]       [speaker]",
-            style="bright_white",
+            " ───────────────▶ ",
+            style="cyan",
+        )
+
+        signal.append(
+            "[speaker]",
+            style="bold bright_white",
         )
 
         return Panel(
-            Align.center(signal),
+            Align.center(
+                signal,
+                vertical="middle",
+            ),
             title=(
                 "[bold bright_cyan]"
                 "WHAT IS ACTUALLY HAPPENING?"
@@ -274,7 +281,7 @@ class TerminalDisplay:
             ),
             border_style="cyan",
             box=box.ROUNDED,
-            padding=(0, 1),
+            padding=(1, 1),
         )
 
     def _build_io_panel(
@@ -482,38 +489,41 @@ class TerminalDisplay:
                     style="bold bright_yellow",
                 )
             ),
+
             Text(""),
+
             Align.center(
                 Text(
-                    "Raspberry Pi Zero 2 W",
+                    "Raspberry Pi • Sensor • Breadboard",
                     style="bright_white",
                 )
             ),
+
             Align.center(
                 Text(
-                    "VL53L0X distance sensor",
+                    "Transistors • LEDs • Python",
                     style="bright_white",
                 )
             ),
-            Align.center(
-                Text(
-                    "Breadboard + transistors",
-                    style="bright_white",
-                )
-            ),
-            Align.center(
-                Text(
-                    "LEDs + Python",
-                    style="bright_white",
-                )
-            ),
+
             Text(""),
+
             Align.center(
                 Text(
-                    "WSU ACM // LEARN BY BUILDING",
+                    "WSU ACM",
                     style="bold bright_cyan",
                 )
             ),
+
+            Align.center(
+                Text(
+                    "LEARN BY BUILDING",
+                    style="bold bright_green",
+                )
+            ),
+
+            Text(""),
+
             Align.center(
                 Text(
                     "ASK US HOW IT WORKS!",
@@ -523,7 +533,10 @@ class TerminalDisplay:
         )
 
         return Panel(
-            content,
+            Align.center(
+                content,
+                vertical="middle",
+            ),
             title=(
                 "[bold bright_cyan]"
                 "BUILD • BREAK • LEARN"
@@ -531,7 +544,7 @@ class TerminalDisplay:
             ),
             border_style="cyan",
             box=box.ROUNDED,
-            padding=(0, 1),
+            padding=(1, 1),
         )
 
     def _build_footer(
