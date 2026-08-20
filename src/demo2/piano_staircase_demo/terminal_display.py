@@ -274,7 +274,7 @@ class TerminalDisplay:
             ),
             border_style="cyan",
             box=box.ROUNDED,
-            padding=(1, 1),
+            padding=(0, 1),
         )
 
     def _build_io_panel(
@@ -497,7 +497,7 @@ class TerminalDisplay:
             ),
             Align.center(
                 Text(
-                    "Breadboard + 2N2222 transistors",
+                    "Breadboard + transistors",
                     style="bright_white",
                 )
             ),
@@ -510,17 +510,10 @@ class TerminalDisplay:
             Text(""),
             Align.center(
                 Text(
-                    "WSU ACM",
+                    "WSU ACM // LEARN BY BUILDING",
                     style="bold bright_cyan",
                 )
             ),
-            Align.center(
-                Text(
-                    "LEARN BY BUILDING",
-                    style="bold bright_green",
-                )
-            ),
-            Text(""),
             Align.center(
                 Text(
                     "ASK US HOW IT WORKS!",
@@ -538,7 +531,7 @@ class TerminalDisplay:
             ),
             border_style="cyan",
             box=box.ROUNDED,
-            padding=(1, 1),
+            padding=(0, 1),
         )
 
     def _build_footer(
@@ -647,22 +640,22 @@ class TerminalDisplay:
         layout["left"].split_column(
             Layout(
                 name="code",
-                ratio=3,
+                ratio=1,
             ),
             Layout(
                 name="signal",
-                ratio=2,
+                ratio=1,
             ),
         )
 
         layout["right"].split_column(
             Layout(
                 name="io",
-                ratio=3,
+                ratio=1,
             ),
             Layout(
                 name="promo",
-                ratio=2,
+                ratio=1,
             ),
         )
 
