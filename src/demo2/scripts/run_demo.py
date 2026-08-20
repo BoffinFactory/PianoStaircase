@@ -86,7 +86,7 @@ PIPE_OVERRIDE_TRIGGERS = 4
 # Terminal rendering is intentionally slower than sensor polling.
 # The display runs in a separate process, so this no longer determines
 # how often the hardware loop itself gets CPU time.
-DISPLAY_HZ = 10.0
+DISPLAY_HZ = 5.0
 DISPLAY_RESPONSE_HOLD_SECONDS = 0.75
 
 
