@@ -29,7 +29,7 @@ DEFAULT_GAIN = 2.0
 DEFAULT_VELOCITY = 100
 
 DEFAULT_SAMPLE_RATE = 48000
-DEFAULT_PERIOD_SIZE = 2048
+DEFAULT_PERIOD_SIZE = 1024
 
 MIDI_CHANNEL = 0
 
@@ -114,7 +114,7 @@ class PianoEngine:
         #     Match the Pi's PipeWire audio graph and avoid unnecessary
         #     44.1 kHz -> 48 kHz resampling.
         #
-        # -z 2048
+        # -z 1024
         #     Use a deliberately conservative audio period. FluidSynth's Linux
         #     default of 64 frames drove PipeWire toward ~1.3 ms graph cycles,
         #     which caused xruns on the Pi Zero 2 W.
