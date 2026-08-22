@@ -28,6 +28,9 @@ DEFAULT_SOUNDFONT = Path(
 DEFAULT_GAIN = 2.0
 DEFAULT_VELOCITY = 100
 
+DEFAULT_SAMPLE_RATE = 48000
+DEFAULT_PERIOD_SIZE = 2048
+
 MIDI_CHANNEL = 0
 
 # General MIDI bank 0, program 0 = Acoustic Grand Piano.
@@ -107,6 +110,15 @@ class PianoEngine:
         #     Do not create an external MIDI-input driver. Demo 2 controls
         #     the synth entirely through its command shell.
         #
+        # -r 48000
+        #     Match the Pi's PipeWire audio graph and avoid unnecessary
+        #     44.1 kHz -> 48 kHz resampling.
+        #
+        # -z 2048
+        #     Use a deliberately conservative audio period. FluidSynth's Linux
+        #     default of 64 frames drove PipeWire toward ~1.3 ms graph cycles,
+        #     which caused xruns on the Pi Zero 2 W.
+        #
         # FluidSynth reads shell commands from stdin by default.
         #
         self._process = subprocess.Popen(
@@ -114,6 +126,14 @@ class PianoEngine:
                 fluidsynth_path,
                 "-a",
                 "pipewire",
+                "-r",
+                str(
+                    DEFAULT_SAMPLE_RATE
+                ),
+                "-z",
+                str(
+                    DEFAULT_PERIOD_SIZE
+                ),
                 "-g",
                 str(gain),
                 "-n",
