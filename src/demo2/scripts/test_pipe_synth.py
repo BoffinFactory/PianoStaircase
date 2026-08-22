@@ -63,6 +63,8 @@ from dataclasses import dataclass
 
 from piano_staircase_demo.piano import (
     DEFAULT_GAIN,
+    DEFAULT_PERIOD_SIZE,
+    DEFAULT_SAMPLE_RATE,
     DEFAULT_SOUNDFONT,
 )
 
@@ -949,6 +951,14 @@ def main(
             fluidsynth,
             "-a",
             "pipewire",
+            "-r",
+            str(
+                DEFAULT_SAMPLE_RATE
+            ),
+            "-z",
+            str(
+                DEFAULT_PERIOD_SIZE
+            ),
             "-g",
             str(
                 DEFAULT_GAIN
