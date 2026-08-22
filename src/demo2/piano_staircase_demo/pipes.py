@@ -1011,6 +1011,7 @@ class PipeSystem:
         *,
         seed: int | None = None,
         now: float | None = None,
+        delay_seconds: float = 0.0,
     ) -> PipeSnapshot | None:
         """
         Start another independent falling pipe.
@@ -1024,6 +1025,11 @@ class PipeSystem:
         if now is None:
             now = (
                 time.monotonic()
+            )
+
+        if delay_seconds < 0:
+            raise ValueError(
+                "delay_seconds cannot be negative."
             )
 
         simulation = (
@@ -1047,7 +1053,10 @@ class PipeSystem:
             pipe_id=pipe_id,
             channel=channel,
             simulation=simulation,
-            start_time=now,
+            start_time=(
+                now
+                + delay_seconds
+            ),
         )
 
         self._active[

@@ -33,6 +33,8 @@ from piano_staircase_demo.synth import (
 
 UPDATE_HZ = 200.0
 
+BURST_STAGGER_SECONDS = 0.050
+
 
 def print_pipe(
     pipe: PipeSnapshot,
@@ -234,12 +236,25 @@ def process_command(
             f"Launching {count} pipes simultaneously..."
         )
 
-        for _ in range(
+        burst_start = (
+            time.monotonic()
+        )
+
+        for index in range(
             count
         ):
-            launch_pipe(
-                pipes
+            pipe = pipes.start_pipe(
+                now=burst_start,
+                delay_seconds=(
+                    index
+                    * BURST_STAGGER_SECONDS
+                ),
             )
+
+            if pipe is not None:
+                print_pipe(
+                    pipe
+                )
 
         return True
 
