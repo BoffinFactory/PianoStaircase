@@ -3,8 +3,8 @@
 """
 Experiment with procedurally synthesized falling-pipe sounds.
 
-The timing model is inspired by a slender rod rocking end-to-end on a
-horizontal surface.
+The timing model treats the pipe approximately as a slender rod rocking
+end-to-end on a horizontal surface.
 
 For a uniform slender rod of length L pivoting temporarily about one end:
 
@@ -20,17 +20,36 @@ between floor impacts of:
 
     delta_t ~= 4 * sqrt(L * theta / (3g))
 
-Each collision loses energy. If the angular velocity retained after an
-impact is multiplied by a restitution factor e, the next rocking angle is
-approximately multiplied by e^2. Consequently, successive impact intervals
+Each collision loses energy. If angular velocity retained after an impact
+is multiplied by restitution factor e, the next rocking angle is
+approximately multiplied by e^2. Successive impact intervals therefore
 shrink approximately by e.
 
-This is a deliberately simplified physical model. A real loose pipe may
-also slide, roll, flex, and bounce vertically.
+The tonal model treats the pipe as a freely vibrating hollow beam. Its
+structural bending frequency scales approximately as:
 
-Acoustically, both Tubular Bell notes are struck at every impact. Their
-relative strengths alternate to approximate different modal excitation
-when opposite ends contact the floor.
+    f proportional to (1 / L^2) * sqrt(E * I / mu)
+
+where:
+
+    L   = pipe length
+    E   = Young's modulus
+    I   = second moment of area
+    mu  = mass per unit length
+
+For a hollow circular pipe:
+
+    I = pi * (D^4 - d^4) / 64
+
+where D and d are outer and inner diameters.
+
+This lets length, diameter, wall thickness, density, and elasticity affect
+the synthetic pipe's tone.
+
+The calculated pitch variation is intentionally compressed before mapping
+onto MIDI notes. TimGM6mb's Tubular Bells preset is a musical approximation,
+not a physical pipe synthesizer, so extreme physical transpositions sound
+less convincing rather than more accurate.
 """
 
 from __future__ import annotations
@@ -53,13 +72,63 @@ TUBULAR_BELLS_PROGRAM = 14
 
 GRAVITY_M_S2 = 9.80665
 
-LOW_RESONANCE = 66
-HIGH_RESONANCE = 73
+REFERENCE_LOW_RESONANCE = 66
+REFERENCE_HIGH_RESONANCE = 73
 
 PIPE_CHANNEL_VOLUME = 82
 PIPE_EXPRESSION = 127
 
 ALL_SOUNDS_OFF_CC = 120
+
+#
+# The physical model can easily move more than an octave for realistic
+# geometry changes. Compress that range because large sample transpositions
+# stop sounding like convincing Tubular Bells in this SoundFont.
+#
+PHYSICAL_PITCH_SCALE = 0.55
+MAX_TONE_SHIFT_SEMITONES = 8
+
+REFERENCE_LENGTH_M = 0.90
+REFERENCE_OUTER_DIAMETER_M = 0.038
+REFERENCE_WALL_THICKNESS_M = 0.0015
+
+
+@dataclass(frozen=True)
+class PipeMaterial:
+    """Mechanical properties used by the simplified tonal model."""
+
+    name: str
+
+    young_modulus_pa: float
+    density_kg_m3: float
+
+
+STEEL = PipeMaterial(
+    name="steel",
+    young_modulus_pa=205e9,
+    density_kg_m3=7850.0,
+)
+
+
+ALUMINUM = PipeMaterial(
+    name="aluminum",
+    young_modulus_pa=68.9e9,
+    density_kg_m3=2700.0,
+)
+
+
+COPPER = PipeMaterial(
+    name="copper",
+    young_modulus_pa=117e9,
+    density_kg_m3=8940.0,
+)
+
+
+PIPE_MATERIALS = (
+    STEEL,
+    ALUMINUM,
+    COPPER,
+)
 
 
 @dataclass(frozen=True)
@@ -68,7 +137,12 @@ class PipeModel:
 
     name: str
 
+    material: PipeMaterial
+
     length_m: float
+    outer_diameter_m: float
+    wall_thickness_m: float
+
     initial_angle_deg: float
 
     angular_restitution: float
@@ -105,6 +179,36 @@ def send(
     process.stdin.flush()
 
 
+def clamp(
+    value: float,
+    minimum: float,
+    maximum: float,
+) -> float:
+    """Clamp a floating-point value to a range."""
+
+    return max(
+        minimum,
+        min(
+            maximum,
+            value,
+        ),
+    )
+
+
+def clamp_midi_velocity(
+    value: float,
+) -> int:
+    """Clamp a calculated velocity to the MIDI range."""
+
+    return max(
+        1,
+        min(
+            127,
+            round(value),
+        ),
+    )
+
+
 def rocking_interval_seconds(
     *,
     length_m: float,
@@ -113,8 +217,7 @@ def rocking_interval_seconds(
     """
     Estimate time between alternate end impacts.
 
-    This uses the small-angle approximation for a uniform slender rod
-    rocking about its endpoints:
+    Small-angle approximation for a uniform slender rod:
 
         dt ~= 4 sqrt(L theta / 3g)
     """
@@ -141,17 +244,205 @@ def rocking_interval_seconds(
     )
 
 
-def clamp_midi_velocity(
-    value: float,
-) -> int:
-    """Clamp a calculated velocity to the MIDI range."""
+def structural_frequency_factor(
+    *,
+    material: PipeMaterial,
+    length_m: float,
+    outer_diameter_m: float,
+    wall_thickness_m: float,
+) -> float:
+    """
+    Return a relative hollow-beam frequency factor.
 
-    return max(
-        1,
-        min(
-            127,
-            round(value),
+    The common mode constant is omitted because only frequency ratios are
+    needed:
+
+        factor = sqrt(E I / mu) / L^2
+    """
+
+    if length_m <= 0:
+        raise ValueError(
+            "length_m must be greater than zero."
+        )
+
+    if outer_diameter_m <= 0:
+        raise ValueError(
+            "outer_diameter_m must be greater than zero."
+        )
+
+    if wall_thickness_m <= 0:
+        raise ValueError(
+            "wall_thickness_m must be greater than zero."
+        )
+
+    inner_diameter_m = (
+        outer_diameter_m
+        - 2.0
+        * wall_thickness_m
+    )
+
+    if inner_diameter_m <= 0:
+        raise ValueError(
+            "Wall thickness leaves no hollow interior."
+        )
+
+    second_moment = (
+        math.pi
+        * (
+            outer_diameter_m ** 4
+            - inner_diameter_m ** 4
+        )
+        / 64.0
+    )
+
+    cross_section_area = (
+        math.pi
+        * (
+            outer_diameter_m ** 2
+            - inner_diameter_m ** 2
+        )
+        / 4.0
+    )
+
+    mass_per_length = (
+        material.density_kg_m3
+        * cross_section_area
+    )
+
+    return (
+        math.sqrt(
+            (
+                material.young_modulus_pa
+                * second_moment
+            )
+            / mass_per_length
+        )
+        / (
+            length_m ** 2
+        )
+    )
+
+
+REFERENCE_FREQUENCY_FACTOR = (
+    structural_frequency_factor(
+        material=STEEL,
+        length_m=REFERENCE_LENGTH_M,
+        outer_diameter_m=(
+            REFERENCE_OUTER_DIAMETER_M
         ),
+        wall_thickness_m=(
+            REFERENCE_WALL_THICKNESS_M
+        ),
+    )
+)
+
+
+def calculate_tone(
+    model: PipeModel,
+) -> tuple[int, int, float, int]:
+    """
+    Calculate the two Tubular Bell notes for one pipe.
+
+    Return:
+
+        low note
+        high note
+        raw physical semitone shift
+        applied/compressed semitone shift
+    """
+
+    factor = structural_frequency_factor(
+        material=model.material,
+        length_m=model.length_m,
+        outer_diameter_m=(
+            model.outer_diameter_m
+        ),
+        wall_thickness_m=(
+            model.wall_thickness_m
+        ),
+    )
+
+    frequency_ratio = (
+        factor
+        / REFERENCE_FREQUENCY_FACTOR
+    )
+
+    raw_semitone_shift = (
+        12.0
+        * math.log2(
+            frequency_ratio
+        )
+    )
+
+    applied_shift = round(
+        clamp(
+            (
+                raw_semitone_shift
+                * PHYSICAL_PITCH_SCALE
+            ),
+            -MAX_TONE_SHIFT_SEMITONES,
+            MAX_TONE_SHIFT_SEMITONES,
+        )
+    )
+
+    low_note = (
+        REFERENCE_LOW_RESONANCE
+        + applied_shift
+    )
+
+    high_note = (
+        REFERENCE_HIGH_RESONANCE
+        + applied_shift
+    )
+
+    return (
+        low_note,
+        high_note,
+        raw_semitone_shift,
+        applied_shift,
+    )
+
+
+def calculate_secondary_mix(
+    model: PipeModel,
+) -> float:
+    """
+    Calculate how prominently the secondary resonance should sound.
+
+    Longer tubes tend to produce a richer spectrum of audible partials.
+    Shorter tubes are therefore given a slightly weaker secondary resonance.
+
+    This is a psychoacoustic approximation rather than a modal simulation.
+    """
+
+    length_fraction = clamp(
+        (
+            model.length_m
+            - 0.55
+        )
+        / (
+            1.30
+            - 0.55
+        ),
+        0.0,
+        1.0,
+    )
+
+    richness_multiplier = (
+        0.82
+        + (
+            0.28
+            * length_fraction
+        )
+    )
+
+    return clamp(
+        (
+            model.secondary_mix
+            * richness_multiplier
+        ),
+        0.30,
+        0.54,
     )
 
 
@@ -213,8 +504,8 @@ def impact(
     )
 
     #
-    # Floor contact is brief. The SoundFont's release tail supplies
-    # the continuing metallic ringing after the contact ends.
+    # Physical contact is brief. The SoundFont release supplies the
+    # continuing metallic ring after the pipe leaves the floor again.
     #
     time.sleep(
         contact_seconds
@@ -247,8 +538,8 @@ def play_pipe(
 
     #
     # Previous Tubular Bell strikes can keep ringing long after the modeled
-    # pipe has finished moving. Since each invocation represents a new,
-    # independent falling pipe, discard any tails left by the previous test.
+    # pipe has finished moving. Each test invocation represents a separate
+    # pipe, so discard tails from the previous test.
     #
     send(
         process,
@@ -260,6 +551,21 @@ def play_pipe(
 
     time.sleep(
         0.025
+    )
+
+    (
+        low_resonance,
+        high_resonance,
+        raw_tone_shift,
+        applied_tone_shift,
+    ) = calculate_tone(
+        model
+    )
+
+    secondary_mix = (
+        calculate_secondary_mix(
+            model
+        )
     )
 
     angle = math.radians(
@@ -276,18 +582,54 @@ def play_pipe(
     )
 
     print(
-        f"  length:       "
+        f"  material:       "
+        f"{model.material.name}"
+    )
+
+    print(
+        f"  length:         "
         f"{model.length_m:.2f} m"
     )
 
     print(
-        f"  initial lift: "
+        f"  diameter:       "
+        f"{model.outer_diameter_m * 1000:.1f} mm"
+    )
+
+    print(
+        f"  wall thickness: "
+        f"{model.wall_thickness_m * 1000:.1f} mm"
+    )
+
+    print(
+        f"  initial lift:   "
         f"{model.initial_angle_deg:.1f} degrees"
     )
 
     print(
-        f"  restitution:  "
+        f"  restitution:    "
         f"{model.angular_restitution:.2f}"
+    )
+
+    print(
+        f"  raw tone shift: "
+        f"{raw_tone_shift:+.2f} semitones"
+    )
+
+    print(
+        f"  applied shift:  "
+        f"{applied_tone_shift:+d} semitones"
+    )
+
+    print(
+        f"  resonances:     "
+        f"{low_resonance} / "
+        f"{high_resonance}"
+    )
+
+    print(
+        f"  secondary mix:  "
+        f"{secondary_mix:.2f}"
     )
 
     print()
@@ -295,16 +637,15 @@ def play_pipe(
     for impact_number in range(
         model.impacts
     ):
-        interval = (
-            rocking_interval_seconds(
-                length_m=model.length_m,
-                angle_radians=angle,
-            )
+        interval = rocking_interval_seconds(
+            length_m=model.length_m,
+            angle_radians=angle,
         )
 
         #
-        # Real impacts will not be perfectly repeatable. Keep this tiny;
-        # we want physical imperfection, not random rhythm.
+        # Real impacts will not be perfectly repeatable. Keep timing
+        # variation small so this remains a rocking object rather than
+        # a randomized rhythm.
         #
         timing_multiplier = (
             1.0
@@ -326,25 +667,25 @@ def play_pipe(
         )
 
         #
-        # A single tube keeps the same modes. We merely change which
-        # resonance is more strongly excited at alternating contacts.
+        # A single pipe retains the same resonant frequencies. Alternating
+        # contacts merely alter which resonance is emphasized.
         #
         if impact_number % 2 == 0:
             primary_note = (
-                LOW_RESONANCE
+                low_resonance
             )
 
             secondary_note = (
-                HIGH_RESONANCE
+                high_resonance
             )
 
         else:
             primary_note = (
-                HIGH_RESONANCE
+                high_resonance
             )
 
             secondary_note = (
-                LOW_RESONANCE
+                low_resonance
             )
 
         print(
@@ -361,7 +702,7 @@ def play_pipe(
             secondary_note=secondary_note,
             velocity=current_velocity,
             primary_mix=model.primary_mix,
-            secondary_mix=model.secondary_mix,
+            secondary_mix=secondary_mix,
             contact_seconds=(
                 model.contact_seconds
             ),
@@ -375,10 +716,6 @@ def play_pipe(
             impact_number
             < model.impacts - 1
         ):
-            #
-            # interval represents impact-to-impact time, so subtract the
-            # short contact pulse we have already waited through.
-            #
             remaining_wait = max(
                 0.0,
                 interval
@@ -392,12 +729,9 @@ def play_pipe(
         #
         # Retained angular speed is multiplied by e.
         #
-        # Since rocking height is proportional to angular speed squared
-        # in this small-angle approximation:
+        # Since rocking height is proportional to angular speed squared:
         #
         #     theta_next ~= e^2 theta
-        #
-        # This automatically causes the intervals to get shorter.
         #
         angle *= (
             model.angular_restitution
@@ -410,8 +744,11 @@ def play_pipe(
 
 
 CLASSIC_PIPE = PipeModel(
-    name="Classic medium pipe",
+    name="Classic medium steel pipe",
+    material=STEEL,
     length_m=0.90,
+    outer_diameter_m=0.038,
+    wall_thickness_m=0.0015,
     initial_angle_deg=18.0,
     angular_restitution=0.76,
     impacts=7,
@@ -424,59 +761,86 @@ CLASSIC_PIPE = PipeModel(
 
 
 HEAVY_PIPE = PipeModel(
-    name="Long heavy pipe",
+    name="Long heavy steel pipe",
+    material=STEEL,
     length_m=1.25,
+    outer_diameter_m=0.048,
+    wall_thickness_m=0.0025,
     initial_angle_deg=20.0,
     angular_restitution=0.79,
     impacts=7,
     initial_velocity=127,
     velocity_floor=30,
     primary_mix=1.00,
-    secondary_mix=0.42,
+    secondary_mix=0.46,
     contact_seconds=0.035,
 )
 
 
 LIGHT_PIPE = PipeModel(
-    name="Short light pipe",
+    name="Short light aluminum pipe",
+    material=ALUMINUM,
     length_m=0.55,
+    outer_diameter_m=0.030,
+    wall_thickness_m=0.0012,
     initial_angle_deg=15.0,
     angular_restitution=0.72,
     impacts=6,
     initial_velocity=118,
     velocity_floor=25,
     primary_mix=1.00,
-    secondary_mix=0.52,
+    secondary_mix=0.48,
     contact_seconds=0.025,
 )
 
 
 SLOW_PIPE = PipeModel(
-    name="Slow dramatic pipe",
+    name="Slow copper pipe",
+    material=COPPER,
     length_m=1.10,
+    outer_diameter_m=0.042,
+    wall_thickness_m=0.0015,
     initial_angle_deg=25.0,
     angular_restitution=0.78,
     impacts=8,
-    initial_velocity=127,
+    initial_velocity=123,
     velocity_floor=27,
     primary_mix=1.00,
-    secondary_mix=0.46,
+    secondary_mix=0.45,
     contact_seconds=0.032,
 )
 
 
-def play_random_pipe(
-    process: subprocess.Popen[str],
-) -> None:
-    """Generate one reproducible physics-inspired pipe."""
-
-    seed = random.randrange(
-        0,
-        2**32,
-    )
+def create_random_pipe(
+    seed: int,
+) -> tuple[
+    PipeModel,
+    random.Random,
+]:
+    """Create one reproducible randomized physical pipe."""
 
     rng = random.Random(
         seed
+    )
+
+    material = rng.choices(
+        PIPE_MATERIALS,
+        weights=(
+            0.60,
+            0.25,
+            0.15,
+        ),
+        k=1,
+    )[0]
+
+    outer_diameter_m = rng.uniform(
+        0.028,
+        0.052,
+    )
+
+    wall_thickness_m = rng.uniform(
+        0.0010,
+        0.0028,
     )
 
     model = PipeModel(
@@ -484,9 +848,16 @@ def play_random_pipe(
             f"Random pipe "
             f"(seed {seed})"
         ),
+        material=material,
         length_m=rng.uniform(
             0.55,
             1.30,
+        ),
+        outer_diameter_m=(
+            outer_diameter_m
+        ),
+        wall_thickness_m=(
+            wall_thickness_m
         ),
         initial_angle_deg=rng.uniform(
             14.0,
@@ -510,8 +881,8 @@ def play_random_pipe(
         ),
         primary_mix=1.0,
         secondary_mix=rng.uniform(
-            0.38,
-            0.58,
+            0.40,
+            0.50,
         ),
         contact_seconds=rng.uniform(
             0.024,
@@ -525,6 +896,32 @@ def play_random_pipe(
             1,
             5,
         ),
+    )
+
+    return (
+        model,
+        rng,
+    )
+
+
+def play_random_pipe(
+    process: subprocess.Popen[str],
+    *,
+    seed: int | None = None,
+) -> None:
+    """Generate or replay one reproducible physics-inspired pipe."""
+
+    if seed is None:
+        seed = random.randrange(
+            0,
+            2**32,
+        )
+
+    (
+        model,
+        rng,
+    ) = create_random_pipe(
+        seed
     )
 
     play_pipe(
@@ -602,23 +999,27 @@ def main(
 
         print()
         print(
-            "1 = classic medium pipe"
+            "1 = classic medium steel pipe"
         )
 
         print(
-            "2 = long/heavy pipe"
+            "2 = long/heavy steel pipe"
         )
 
         print(
-            "3 = short/light pipe"
+            "3 = short/light aluminum pipe"
         )
 
         print(
-            "4 = slow dramatic pipe"
+            "4 = slow copper pipe"
         )
 
         print(
             "r = randomized pipe"
+        )
+
+        print(
+            "s <seed> = replay a random seed"
         )
 
         print(
@@ -628,9 +1029,13 @@ def main(
         print()
 
         while True:
-            command = input(
+            raw_command = input(
                 "pipe> "
-            ).strip().lower()
+            ).strip()
+
+            command = (
+                raw_command.lower()
+            )
 
             if command == "q":
                 break
@@ -668,9 +1073,32 @@ def main(
                     process
                 )
 
+            elif command.startswith(
+                "s "
+            ):
+                try:
+                    seed = int(
+                        command.split(
+                            maxsplit=1
+                        )[1]
+                    )
+
+                except ValueError:
+                    print(
+                        "Seed must be an integer."
+                    )
+
+                    continue
+
+                play_random_pipe(
+                    process,
+                    seed=seed,
+                )
+
             else:
                 print(
-                    "Choose 1, 2, 3, 4, r, or q."
+                    "Choose 1, 2, 3, 4, r, "
+                    "s <seed>, or q."
                 )
 
     finally:
