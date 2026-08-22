@@ -56,6 +56,11 @@ GRAVITY_M_S2 = 9.80665
 LOW_RESONANCE = 66
 HIGH_RESONANCE = 73
 
+PIPE_CHANNEL_VOLUME = 82
+PIPE_EXPRESSION = 127
+
+ALL_SOUNDS_OFF_CC = 120
+
 
 @dataclass(frozen=True)
 class PipeModel:
@@ -239,6 +244,23 @@ def play_pipe(
     rng: random.Random,
 ) -> None:
     """Play one end-to-end rocking pipe."""
+
+    #
+    # Previous Tubular Bell strikes can keep ringing long after the modeled
+    # pipe has finished moving. Since each invocation represents a new,
+    # independent falling pipe, discard any tails left by the previous test.
+    #
+    send(
+        process,
+        (
+            f"cc {MIDI_CHANNEL} "
+            f"{ALL_SOUNDS_OFF_CC} 0"
+        ),
+    )
+
+    time.sleep(
+        0.025
+    )
 
     angle = math.radians(
         model.initial_angle_deg
@@ -560,12 +582,18 @@ def main(
 
         send(
             process,
-            f"cc {MIDI_CHANNEL} 7 127",
+            (
+                f"cc {MIDI_CHANNEL} "
+                f"7 {PIPE_CHANNEL_VOLUME}"
+            ),
         )
 
         send(
             process,
-            f"cc {MIDI_CHANNEL} 11 127",
+            (
+                f"cc {MIDI_CHANNEL} "
+                f"11 {PIPE_EXPRESSION}"
+            ),
         )
 
         print(
