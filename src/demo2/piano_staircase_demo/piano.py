@@ -1,11 +1,27 @@
 """
 Persistent sampled-piano support for Piano Staircase Demo 2.
 
-The piano engine owns one long-running FluidSynth process. Notes are controlled
-with MIDI-style NOTE ON and NOTE OFF events rather than by playing fixed WAV
-files.
+PianoEngine is a piano-specific controller layered on top of the reusable
+FluidSynthEngine.
 
-This allows the physical interaction to behave more like a real piano key:
+It can either:
+
+    create and own its own FluidSynthEngine
+
+or:
+
+    use a shared FluidSynthEngine owned by the main application
+
+The shared-engine form allows the final demo to use one FluidSynth process
+for both:
+
+    channel 0 -> piano
+    channels 1-6 -> falling pipes
+
+Notes are controlled with MIDI-style NOTE ON and NOTE OFF events rather than
+by playing fixed WAV files.
+
+This allows physical interaction to behave like a real piano key:
 
     ENTER -> note_on()
     HELD  -> do nothing; let the piano resonate
@@ -16,26 +32,27 @@ Sound effects and announcer clips remain separate in audio.py.
 
 from __future__ import annotations
 
-import shutil
-import subprocess
 from pathlib import Path
 
-
-DEFAULT_SOUNDFONT = Path(
-    "/usr/share/sounds/sf2/TimGM6mb.sf2"
+from piano_staircase_demo.synth import (
+    DEFAULT_GAIN,
+    DEFAULT_PERIOD_SIZE,
+    DEFAULT_SAMPLE_RATE,
+    DEFAULT_SOUNDFONT,
+    FluidSynthEngine,
 )
 
-DEFAULT_GAIN = 2.0
+
 DEFAULT_VELOCITY = 100
 
-DEFAULT_SAMPLE_RATE = 48000
-DEFAULT_PERIOD_SIZE = 1024
-
-MIDI_CHANNEL = 0
+PIANO_CHANNEL = 0
 
 # General MIDI bank 0, program 0 = Acoustic Grand Piano.
 PIANO_BANK = 0
 PIANO_PROGRAM = 0
+
+PIANO_VOLUME = 127
+PIANO_EXPRESSION = 127
 
 MIDI_NOTES = {
     "C4": 60,
@@ -46,199 +63,102 @@ MIDI_NOTES = {
 
 class PianoEngine:
     """
-    Control a persistent FluidSynth piano through its command shell.
+    Piano-specific controller for one FluidSynth MIDI channel.
 
-    Only one FluidSynth process is started. Individual notes are turned on
-    and off by writing MIDI commands to the process's standard input.
+    If synth is omitted, PianoEngine creates and owns a FluidSynthEngine.
+    This preserves the convenient standalone behavior used by the existing
+    piano test scripts.
+
+    If synth is supplied, PianoEngine only configures and controls the piano
+    channel. Closing PianoEngine releases its piano notes but does not stop
+    the shared FluidSynth process.
     """
 
     def __init__(
         self,
         *,
+        synth: FluidSynthEngine | None = None,
         soundfont: str | Path = DEFAULT_SOUNDFONT,
         gain: float = DEFAULT_GAIN,
         velocity: int = DEFAULT_VELOCITY,
+        channel: int = PIANO_CHANNEL,
     ) -> None:
-        fluidsynth_path = shutil.which(
-            "fluidsynth"
-        )
-
-        if fluidsynth_path is None:
-            raise RuntimeError(
-                "fluidsynth was not found. "
-                "Install FluidSynth before using PianoEngine."
-            )
-
-        self._soundfont = (
-            Path(soundfont)
-            .expanduser()
-            .resolve()
-        )
-
-        if not self._soundfont.is_file():
-            raise FileNotFoundError(
-                "SoundFont not found: "
-                f"{self._soundfont}"
-            )
-
-        if gain <= 0:
-            raise ValueError(
-                "gain must be greater than zero."
-            )
-
         if not 1 <= velocity <= 127:
             raise ValueError(
                 "velocity must be between 1 and 127."
             )
 
-        self._default_velocity = velocity
+        if not 0 <= channel <= 15:
+            raise ValueError(
+                "channel must be between 0 and 15."
+            )
 
-        self._active_notes: set[
-            int
-        ] = set()
+        self._default_velocity = velocity
+        self._channel = channel
 
         self._closed = False
 
-        #
-        # -a pipewire
-        #     Use the native PipeWire output driver.
-        #
-        # -g
-        #     Set FluidSynth's master gain.
-        #
-        # -n
-        #     Do not create an external MIDI-input driver. Demo 2 controls
-        #     the synth entirely through its command shell.
-        #
-        # -r 48000
-        #     Match the Pi's PipeWire audio graph and avoid unnecessary
-        #     44.1 kHz -> 48 kHz resampling.
-        #
-        # -z 1024
-        #     Use a deliberately conservative audio period. FluidSynth's Linux
-        #     default of 64 frames drove PipeWire toward ~1.3 ms graph cycles,
-        #     which caused xruns on the Pi Zero 2 W.
-        #
-        # FluidSynth reads shell commands from stdin by default.
-        #
-        self._process = subprocess.Popen(
-            [
-                fluidsynth_path,
-                "-a",
-                "pipewire",
-                "-r",
-                str(
+        self._owns_synth = (
+            synth is None
+        )
+
+        if synth is None:
+            self._synth = FluidSynthEngine(
+                soundfont=soundfont,
+                gain=gain,
+                sample_rate=(
                     DEFAULT_SAMPLE_RATE
                 ),
-                "-z",
-                str(
+                period_size=(
                     DEFAULT_PERIOD_SIZE
                 ),
-                "-g",
-                str(gain),
-                "-n",
-                str(self._soundfont),
-            ],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            bufsize=1,
-        )
-
-        if self._process.stdin is None:
-            self._process.terminate()
-
-            raise RuntimeError(
-                "Unable to open FluidSynth command input."
             )
 
-        #
-        # Only one SoundFont is supplied at startup, so it receives
-        # SoundFont ID 1.
-        #
-        # Explicit selection avoids depending on FluidSynth's default
-        # channel state.
-        #
-        self._send(
-            f"select "
-            f"{MIDI_CHANNEL} "
-            f"1 "
-            f"{PIANO_BANK} "
-            f"{PIANO_PROGRAM}"
-        )
+        else:
+            self._synth = synth
 
-        # Maximize MIDI channel volume and expression. Overall loudness is
-        # controlled by FluidSynth's master gain instead.
-        self._send(
-            f"cc {MIDI_CHANNEL} 7 127"
-        )
+        try:
+            self._synth.configure_channel(
+                self._channel,
+                bank=PIANO_BANK,
+                program=PIANO_PROGRAM,
+                volume=PIANO_VOLUME,
+                expression=(
+                    PIANO_EXPRESSION
+                ),
+            )
 
-        self._send(
-            f"cc {MIDI_CHANNEL} 11 127"
-        )
+        except Exception:
+            if self._owns_synth:
+                self._synth.close()
+
+            raise
 
     @property
     def is_running(
         self,
     ) -> bool:
-        """Return whether the FluidSynth process is still alive."""
+        """Return whether the underlying FluidSynth process is alive."""
 
         return (
             not self._closed
-            and self._process.poll()
-            is None
+            and self._synth.is_running
         )
 
     @property
     def active_notes(
         self,
     ) -> tuple[int, ...]:
-        """Return the MIDI notes currently held by the application."""
-
-        return tuple(
-            sorted(
-                self._active_notes
-            )
-        )
-
-    def _send(
-        self,
-        command: str,
-    ) -> None:
-        """Send one command to the persistent FluidSynth shell."""
+        """Return MIDI notes currently held on the piano channel."""
 
         if self._closed:
-            raise RuntimeError(
-                "PianoEngine is closed."
-            )
+            return ()
 
-        return_code = (
-            self._process.poll()
+        return (
+            self._synth.active_notes(
+                self._channel
+            )
         )
-
-        if return_code is not None:
-            raise RuntimeError(
-                "FluidSynth exited unexpectedly "
-                f"with status {return_code}."
-            )
-
-        if self._process.stdin is None:
-            raise RuntimeError(
-                "FluidSynth command input is unavailable."
-            )
-
-        try:
-            self._process.stdin.write(
-                command + "\n"
-            )
-
-            self._process.stdin.flush()
-
-        except BrokenPipeError as exc:
-            raise RuntimeError(
-                "FluidSynth stopped accepting commands."
-            ) from exc
 
     @staticmethod
     def _resolve_note(
@@ -267,6 +187,16 @@ class PianoEngine:
 
         return note
 
+    def _require_open(
+        self,
+    ) -> None:
+        """Reject operations after this piano controller has closed."""
+
+        if self._closed:
+            raise RuntimeError(
+                "PianoEngine is closed."
+            )
+
     def note_on(
         self,
         note: str | int,
@@ -276,18 +206,17 @@ class PianoEngine:
         """
         Start one piano note.
 
-        Return False if that note is already being held. This prevents a
-        repeated sensor sample from retriggering the hammer attack.
+        Return False if that note is already held. This prevents repeated
+        sensor samples from retriggering the hammer attack.
         """
+
+        self._require_open()
 
         midi_note = (
             self._resolve_note(
                 note
             )
         )
-
-        if midi_note in self._active_notes:
-            return False
 
         if velocity is None:
             velocity = (
@@ -299,18 +228,13 @@ class PianoEngine:
                 "velocity must be between 1 and 127."
             )
 
-        self._send(
-            f"noteon "
-            f"{MIDI_CHANNEL} "
-            f"{midi_note} "
-            f"{velocity}"
+        return (
+            self._synth.note_on(
+                self._channel,
+                midi_note,
+                velocity=velocity,
+            )
         )
-
-        self._active_notes.add(
-            midi_note
-        )
-
-        return True
 
     def note_off(
         self,
@@ -322,103 +246,60 @@ class PianoEngine:
         Return False when the requested note was not currently held.
         """
 
+        self._require_open()
+
         midi_note = (
             self._resolve_note(
                 note
             )
         )
 
-        if (
-            midi_note
-            not in self._active_notes
-        ):
-            return False
-
-        self._send(
-            f"noteoff "
-            f"{MIDI_CHANNEL} "
-            f"{midi_note}"
+        return (
+            self._synth.note_off(
+                self._channel,
+                midi_note,
+            )
         )
-
-        self._active_notes.remove(
-            midi_note
-        )
-
-        return True
 
     def release_all(
         self,
     ) -> None:
-        """Release every note currently held by the application."""
+        """Release every piano note currently held."""
 
-        for midi_note in tuple(
-            self._active_notes
-        ):
-            self.note_off(
-                midi_note
-            )
+        self._require_open()
+
+        self._synth.release_channel(
+            self._channel
+        )
 
     def close(
         self,
     ) -> None:
-        """Release all notes and stop the FluidSynth process."""
+        """
+        Release the piano and clean up resources.
+
+        A privately owned synth is terminated.
+
+        A shared synth remains running so other systems, such as falling
+        pipes, can continue using their MIDI channels.
+        """
 
         if self._closed:
             return
 
         try:
-            self.release_all()
+            self._synth.release_channel(
+                self._channel
+            )
 
         except RuntimeError:
-            # FluidSynth may already have failed. Cleanup should still
-            # continue.
+            # The shared synth may already have stopped. Cleanup should
+            # remain safe and idempotent.
             pass
 
-        if (
-            self._process.poll()
-            is None
-        ):
-            try:
-                if (
-                    self._process.stdin
-                    is not None
-                ):
-                    self._process.stdin.write(
-                        "quit\n"
-                    )
+        if self._owns_synth:
+            self._synth.close()
 
-                    self._process.stdin.flush()
-
-                self._process.wait(
-                    timeout=2.0
-                )
-
-            except (
-                BrokenPipeError,
-                subprocess.TimeoutExpired,
-            ):
-                if (
-                    self._process.poll()
-                    is None
-                ):
-                    self._process.terminate()
-
-                    try:
-                        self._process.wait(
-                            timeout=1.0
-                        )
-
-                    except subprocess.TimeoutExpired:
-                        self._process.kill()
-                        self._process.wait()
-
-        if (
-            self._process.stdin
-            is not None
-        ):
-            self._process.stdin.close()
-
-        self._active_notes.clear()
         self._closed = True
 
     def __enter__(
