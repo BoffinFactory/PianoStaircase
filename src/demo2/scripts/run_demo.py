@@ -27,7 +27,9 @@ Two articulation styles are supported:
 
         Distance response mode:
             The active sensor range becomes a chromatic one-dimensional
-            keyboard. Moving the hand changes the held note continuously.
+            keyboard. The number of virtual keys is derived from the
+            physical sensor span using approximately real-piano key density.
+            Moving the hand changes the held note continuously.
 
 An optional Rich terminal presentation runs in a separate process so
 rendering cannot delay the timing-sensitive hardware loop.
@@ -44,23 +46,18 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from piano_staircase_demo.articulation import (
+    DEFAULT_KEYBOARD_CENTER_NOTE,
+    DEFAULT_KEYBOARD_KEY_SCALE,
     DistanceKeyboard,
     midi_note_name,
 )
-from piano_staircase_demo.audio import (
-    AudioClip,
-    AudioSystem,
-)
-from piano_staircase_demo.display_process import (
-    DisplayProcess,
-)
+from piano_staircase_demo.audio import AudioClip, AudioSystem
+from piano_staircase_demo.display_process import DisplayProcess
 from piano_staircase_demo.events import (
     SpecialEventDirector,
     TemporaryEventOverride,
 )
-from piano_staircase_demo.interaction import (
-    CooldownGate,
-)
+from piano_staircase_demo.interaction import CooldownGate
 from piano_staircase_demo.lighting import (
     LightingChannel,
     LightingSystem,
@@ -80,15 +77,9 @@ from piano_staircase_demo.presence import (
     PresenceEvent,
     PresenceTracker,
 )
-from piano_staircase_demo.sensor import (
-    DistanceSensor,
-)
-from piano_staircase_demo.terminal_display import (
-    DisplayState,
-)
-from piano_staircase_demo.trigger import (
-    DistanceTrigger,
-)
+from piano_staircase_demo.sensor import DistanceSensor
+from piano_staircase_demo.terminal_display import DisplayState
+from piano_staircase_demo.trigger import DistanceTrigger
 
 
 # ---------------------------------------------------------------------------
@@ -121,14 +112,34 @@ PIANO_VELOCITY = DEFAULT_VELOCITY
 #
 # Continuous distance-keyboard defaults.
 #
-# 250 mm -> C5
-# 750 mm -> C4
+# 50-1250 mm gives 1200 mm of playable travel. At a 1.0 key scale this is
+# almost exactly the physical chromatic density of an 88-key acoustic piano,
+# so the automatic range resolves to A0-C8.
 #
-KEYBOARD_NEAR_MM = 250
-KEYBOARD_FAR_MM = 750
+# If the far edge proves unreliable in the exhibit's actual lighting and hand
+# geometry, reduce --keyboard-far-mm. DistanceKeyboard will automatically
+# derive a smaller note range while retaining approximately piano-like key
+# spacing.
+#
+KEYBOARD_NEAR_MM = 50
+KEYBOARD_FAR_MM = 1250
 
-KEYBOARD_LOW_NOTE = 60
-KEYBOARD_HIGH_NOTE = 72
+KEYBOARD_CENTER_NOTE = DEFAULT_KEYBOARD_CENTER_NOTE
+KEYBOARD_KEY_SCALE = DEFAULT_KEYBOARD_KEY_SCALE
+
+#
+# None means "derive the MIDI range from physical distance." Supplying both
+# command-line overrides preserves the old explicit low/high-note behavior.
+#
+KEYBOARD_LOW_NOTE: int | None = None
+KEYBOARD_HIGH_NOTE: int | None = None
+
+#
+# Require several consecutive readings beyond the far edge before releasing
+# the continuous keyboard. This prevents isolated VL53L0X far/out-of-range
+# readings from creating false EXIT -> ENTER cycles.
+#
+KEYBOARD_EXIT_SAMPLES = 3
 
 SPECIAL_EVERY = 8
 SPECIAL_NOTE_DURATION_SECONDS = 0.10
@@ -139,8 +150,6 @@ PIPE_OVERRIDE_TRIGGERS = 4
 
 DISPLAY_HZ = 5.0
 DISPLAY_RESPONSE_HOLD_SECONDS = 0.75
-
-KEYBOARD_EXIT_SAMPLES = 3
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +171,6 @@ RESPONSES = (
     ),
 )
 
-
 PIPE_PLACEHOLDER_RESPONSES = (
     RESPONSES[2],
     RESPONSES[0],
@@ -170,34 +178,19 @@ PIPE_PLACEHOLDER_RESPONSES = (
     RESPONSES[1],
 )
 
-
 SPECIAL_SEQUENCES = {
     "ascending": RESPONSES,
-
-    "descending": tuple(
-        reversed(
-            RESPONSES
-        )
-    ),
-
+    "descending": tuple(reversed(RESPONSES)),
     "bounce": (
         RESPONSES[0],
         RESPONSES[2],
         RESPONSES[1],
         RESPONSES[2],
     ),
-
-    PIPE_EVENT_NAME: (
-        PIPE_PLACEHOLDER_RESPONSES
-    ),
+    PIPE_EVENT_NAME: PIPE_PLACEHOLDER_RESPONSES,
 }
 
-
-ResponseMode = (
-    CycleMode
-    | RandomMode
-    | DistanceMode
-)
+ResponseMode = CycleMode | RandomMode | DistanceMode
 
 
 # ---------------------------------------------------------------------------
@@ -217,16 +210,10 @@ class LightCue:
 class PlaybackPlan:
     """Everything needed for one one-shot response."""
 
-    responses: tuple[
-        InteractionResponse,
-        ...
-    ]
-
+    responses: tuple[InteractionResponse, ...]
     clip: AudioClip
-
     note_duration_seconds: float
     note_gap_seconds: float
-
     console_message: str
     special_text: str | None = None
 
@@ -235,15 +222,8 @@ class PlaybackPlan:
 class RuntimeState:
     """Mutable state that changes while the demo is running."""
 
-    active_channel: (
-        LightingChannel
-        | None
-    ) = None
-
-    light_cues: tuple[
-        LightCue,
-        ...
-    ] = ()
+    active_channel: LightingChannel | None = None
+    light_cues: tuple[LightCue, ...] = ()
 
     #
     # When instrument articulation owns a light, it remains on until the
@@ -258,37 +238,14 @@ class RuntimeState:
     # or dropped interaction may be engaged without owning a piano note.
     #
     instrument_engaged: bool = False
+    instrument_note: str | int | None = None
 
-    instrument_note: (
-        str
-        | int
-        | None
-    ) = None
+    last_interaction_time: float | None = None
+    last_response_time: float | None = None
 
-    last_interaction_time: (
-        float
-        | None
-    ) = None
-
-    last_response_time: (
-        float
-        | None
-    ) = None
-
-    display_note: (
-        str
-        | None
-    ) = None
-
-    display_light_name: (
-        str
-        | None
-    ) = None
-
-    display_special_text: (
-        str
-        | None
-    ) = None
+    display_note: str | None = None
+    display_light_name: str | None = None
+    display_special_text: str | None = None
 
     distance_exit_samples: int = 0
 
@@ -297,15 +254,11 @@ class RuntimeState:
 # Command-line configuration
 # ---------------------------------------------------------------------------
 
-def parse_args(
-) -> argparse.Namespace:
+def parse_args() -> argparse.Namespace:
     """Parse command-line options."""
 
     parser = argparse.ArgumentParser(
-        description=(
-            "Run the Piano Staircase Demo 2 "
-            "tabletop application."
-        )
+        description="Run the Piano Staircase Demo 2 tabletop application."
     )
 
     parser.add_argument(
@@ -352,10 +305,7 @@ def parse_args(
         "--hz",
         type=float,
         default=POLL_HZ,
-        help=(
-            "Sensor polling frequency "
-            f"(default: {POLL_HZ:g} Hz)."
-        ),
+        help=f"Sensor polling frequency (default: {POLL_HZ:g} Hz).",
     )
 
     parser.add_argument(
@@ -363,8 +313,7 @@ def parse_args(
         type=float,
         default=COOLDOWN_SECONDS,
         help=(
-            "Minimum interval between accepted "
-            "physical interactions "
+            "Minimum interval between accepted physical interactions "
             f"(default: {COOLDOWN_SECONDS:.2f} seconds)."
         ),
     )
@@ -421,8 +370,7 @@ def parse_args(
         type=int,
         default=KEYBOARD_NEAR_MM,
         help=(
-            "Distance selecting the highest note in "
-            "distance + instrument mode "
+            "Near edge of the continuous distance keyboard "
             f"(default: {KEYBOARD_NEAR_MM} mm)."
         ),
     )
@@ -432,10 +380,33 @@ def parse_args(
         type=int,
         default=KEYBOARD_FAR_MM,
         help=(
-            "Distance selecting the lowest note in "
-            "distance + instrument mode; farther readings "
-            "leave the keyboard "
+            "Far edge of the continuous distance keyboard; farther readings "
+            "begin EXIT confirmation "
             f"(default: {KEYBOARD_FAR_MM} mm)."
+        ),
+    )
+
+    parser.add_argument(
+        "--keyboard-center-note",
+        type=int,
+        default=KEYBOARD_CENTER_NOTE,
+        help=(
+            "Preferred MIDI note around which an automatically sized "
+            "keyboard is centered when the full piano range is not needed "
+            f"(default: {KEYBOARD_CENTER_NOTE}, "
+            f"{midi_note_name(KEYBOARD_CENTER_NOTE)})."
+        ),
+    )
+
+    parser.add_argument(
+        "--keyboard-key-scale",
+        type=float,
+        default=KEYBOARD_KEY_SCALE,
+        help=(
+            "Physical virtual-key scale relative to a real acoustic piano. "
+            "1.0 approximates real piano chromatic density; larger values "
+            "make each virtual key wider "
+            f"(default: {KEYBOARD_KEY_SCALE:g})."
         ),
     )
 
@@ -444,8 +415,8 @@ def parse_args(
         type=int,
         default=KEYBOARD_LOW_NOTE,
         help=(
-            "Lowest MIDI note in distance + instrument mode "
-            f"(default: {KEYBOARD_LOW_NOTE})."
+            "Optional manual lowest MIDI note. Supply together with "
+            "--keyboard-high-note to disable automatic physical sizing."
         ),
     )
 
@@ -454,8 +425,8 @@ def parse_args(
         type=int,
         default=KEYBOARD_HIGH_NOTE,
         help=(
-            "Highest MIDI note in distance + instrument mode "
-            f"(default: {KEYBOARD_HIGH_NOTE})."
+            "Optional manual highest MIDI note. Supply together with "
+            "--keyboard-low-note to disable automatic physical sizing."
         ),
     )
 
@@ -466,9 +437,8 @@ def parse_args(
         type=int,
         default=SPECIAL_EVERY,
         help=(
-            "Play a random special event every N "
-            "accepted interactions; 0 disables "
-            "special events "
+            "Play a random special event every N accepted interactions; "
+            "0 disables special events "
             f"(default: {SPECIAL_EVERY})."
         ),
     )
@@ -478,8 +448,7 @@ def parse_args(
         type=int,
         default=PIPE_OVERRIDE_TRIGGERS,
         help=(
-            "Number of accepted interactions in the "
-            "temporary pipes override "
+            "Number of accepted interactions in the temporary pipes override "
             f"(default: {PIPE_OVERRIDE_TRIGGERS})."
         ),
     )
@@ -487,22 +456,31 @@ def parse_args(
     parser.add_argument(
         "--display",
         action="store_true",
-        help=(
-            "Show the terminal presentation in a "
-            "separate process."
-        ),
+        help="Show the terminal presentation in a separate process.",
     )
 
     parser.add_argument(
         "--verbose",
         action="store_true",
-        help=(
-            "Display dropped, invalid, and instrument "
-            "transition information."
-        ),
+        help="Display dropped, invalid, and instrument transition information.",
     )
 
     return parser.parse_args()
+
+
+def create_distance_keyboard(
+    args: argparse.Namespace,
+) -> DistanceKeyboard:
+    """Create the configured continuous distance keyboard."""
+
+    return DistanceKeyboard(
+        near_distance_mm=args.keyboard_near_mm,
+        far_distance_mm=args.keyboard_far_mm,
+        low_note=args.keyboard_low_note,
+        high_note=args.keyboard_high_note,
+        center_note=args.keyboard_center_note,
+        key_scale=args.keyboard_key_scale,
+    )
 
 
 def validate_args(
@@ -540,23 +518,16 @@ def validate_args(
             "--piano-velocity must be between 1 and 127."
         )
 
-    #
-    # Constructing this also validates all keyboard bounds.
-    #
-    DistanceKeyboard(
-        near_distance_mm=(
-            args.keyboard_near_mm
-        ),
-        far_distance_mm=(
-            args.keyboard_far_mm
-        ),
-        low_note=(
-            args.keyboard_low_note
-        ),
-        high_note=(
-            args.keyboard_high_note
-        ),
-    )
+    try:
+        create_distance_keyboard(
+            args
+        )
+
+    except ValueError as exc:
+        raise SystemExit(
+            "Invalid distance-keyboard configuration: "
+            f"{exc}"
+        ) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -590,19 +561,14 @@ def create_response_mode(
 
         else:
             minimum_distance_mm = 1
-
             maximum_distance_mm = (
                 args.trigger_mm
             )
 
         return DistanceMode(
             RESPONSES,
-            minimum_distance_mm=(
-                minimum_distance_mm
-            ),
-            maximum_distance_mm=(
-                maximum_distance_mm
-            ),
+            minimum_distance_mm=minimum_distance_mm,
+            maximum_distance_mm=maximum_distance_mm,
         )
 
     raise AssertionError(
@@ -620,15 +586,11 @@ def create_audio_clips(
     """Pre-generate the WAV clips used by one-shot and special events."""
 
     note_clips = {
-        response.note: (
-            audio.create_sequence(
-                (
-                    response.note,
-                ),
-                note_duration_seconds=(
-                    NOTE_DURATION_SECONDS
-                ),
-            )
+        response.note: audio.create_sequence(
+            (
+                response.note,
+            ),
+            note_duration_seconds=NOTE_DURATION_SECONDS,
         )
         for response in RESPONSES
     }
@@ -640,12 +602,8 @@ def create_audio_clips(
                 for response
                 in responses
             ),
-            note_duration_seconds=(
-                SPECIAL_NOTE_DURATION_SECONDS
-            ),
-            note_gap_seconds=(
-                SPECIAL_NOTE_GAP_SECONDS
-            ),
+            note_duration_seconds=SPECIAL_NOTE_DURATION_SECONDS,
+            note_gap_seconds=SPECIAL_NOTE_GAP_SECONDS,
         )
         for (
             name,
@@ -673,15 +631,12 @@ def print_startup_summary(
     print(
         "C4 -> GREEN"
     )
-
     print(
         "E4 -> YELLOW"
     )
-
     print(
         "G4 -> BLUE"
     )
-
     print()
 
     print(
@@ -701,13 +656,38 @@ def print_startup_summary(
         )
 
         if args.response_mode == "distance":
+            keyboard = (
+                create_distance_keyboard(
+                    args
+                )
+            )
+
+            sizing_text = (
+                "AUTO"
+                if keyboard.auto_sized
+                else "MANUAL"
+            )
+
             print(
                 "Keyboard:      "
-                f"{midi_note_name(args.keyboard_low_note)} "
-                f"@ {args.keyboard_far_mm} mm "
+                f"{midi_note_name(keyboard.low_note)} "
+                f"@ {keyboard.far_distance_mm} mm "
                 "-> "
-                f"{midi_note_name(args.keyboard_high_note)} "
-                f"@ {args.keyboard_near_mm} mm"
+                f"{midi_note_name(keyboard.high_note)} "
+                f"@ {keyboard.near_distance_mm} mm"
+            )
+
+            print(
+                "Virtual keys:  "
+                f"{keyboard.note_count} "
+                f"({sizing_text}, "
+                f"{keyboard.key_scale:g}x piano scale)"
+            )
+
+            print(
+                "Key spacing:   "
+                f"{keyboard.actual_semitone_width_mm:.1f} mm/semitone "
+                f"across {keyboard.playable_span_mm} mm"
             )
 
     print(
@@ -745,7 +725,6 @@ def build_light_cues(
     """Build timed lighting cues for a response sequence."""
 
     cues = []
-
     cue_start = (
         start_time
     )
@@ -758,15 +737,9 @@ def build_light_cues(
 
         cues.append(
             LightCue(
-                light_name=(
-                    response.light_name
-                ),
-                start_time=(
-                    cue_start
-                ),
-                end_time=(
-                    cue_end
-                ),
+                light_name=response.light_name,
+                start_time=cue_start,
+                end_time=cue_end,
             )
         )
 
@@ -782,14 +755,8 @@ def build_light_cues(
 
 def switch_active_light(
     *,
-    desired_channel: (
-        LightingChannel
-        | None
-    ),
-    active_channel: (
-        LightingChannel
-        | None
-    ),
+    desired_channel: LightingChannel | None,
+    active_channel: LightingChannel | None,
 ) -> LightingChannel | None:
     """Switch physical lighting only when the desired channel changes."""
 
@@ -817,10 +784,7 @@ def choose_active_light(
         str,
         LightingChannel,
     ],
-    active_channel: (
-        LightingChannel
-        | None
-    ),
+    active_channel: LightingChannel | None,
     now: float,
 ) -> LightingChannel | None:
     """Apply the timed light cue that should currently be active."""
@@ -842,12 +806,8 @@ def choose_active_light(
             break
 
     return switch_active_light(
-        desired_channel=(
-            desired_channel
-        ),
-        active_channel=(
-            active_channel
-        ),
+        desired_channel=desired_channel,
+        active_channel=active_channel,
     )
 
 
@@ -866,22 +826,15 @@ def update_lighting(
     A held instrument light takes priority over timed one-shot cues.
     """
 
-    if (
-        runtime.held_light_name
-        is not None
-    ):
+    if runtime.held_light_name is not None:
         runtime.active_channel = (
             switch_active_light(
                 desired_channel=(
                     channels[
-                        runtime
-                        .held_light_name
+                        runtime.held_light_name
                     ]
                 ),
-                active_channel=(
-                    runtime
-                    .active_channel
-                ),
+                active_channel=runtime.active_channel,
             )
         )
 
@@ -889,13 +842,9 @@ def update_lighting(
 
     runtime.active_channel = (
         choose_active_light(
-            cues=(
-                runtime.light_cues
-            ),
+            cues=runtime.light_cues,
             channels=channels,
-            active_channel=(
-                runtime.active_channel
-            ),
+            active_channel=runtime.active_channel,
             now=now,
         )
     )
@@ -903,9 +852,7 @@ def update_lighting(
     if (
         runtime.light_cues
         and now
-        >= runtime
-        .light_cues[-1]
-        .end_time
+        >= runtime.light_cues[-1].end_time
     ):
         runtime.light_cues = ()
 
@@ -949,15 +896,10 @@ def choose_special_event(
         .record_interaction()
     )
 
-    if (
-        special_name
-        == PIPE_EVENT_NAME
-    ):
+    if special_name == PIPE_EVENT_NAME:
         event_override.activate(
             PIPE_EVENT_NAME,
-            interactions=(
-                pipe_triggers
-            ),
+            interactions=pipe_triggers,
         )
 
         #
@@ -1000,10 +942,7 @@ def build_special_plan(
         in responses
     )
 
-    if (
-        special_name
-        == PIPE_EVENT_NAME
-    ):
+    if special_name == PIPE_EVENT_NAME:
         remaining = (
             event_override
             .remaining_interactions
@@ -1047,23 +986,17 @@ def build_special_plan(
 
     return PlaybackPlan(
         responses=responses,
-        clip=(
-            special_clips[
-                special_name
-            ]
-        ),
+        clip=special_clips[
+            special_name
+        ],
         note_duration_seconds=(
             SPECIAL_NOTE_DURATION_SECONDS
         ),
         note_gap_seconds=(
             SPECIAL_NOTE_GAP_SECONDS
         ),
-        console_message=(
-            console_message
-        ),
-        special_text=(
-            special_text
-        ),
+        console_message=console_message,
+        special_text=special_text,
     )
 
 
@@ -1092,11 +1025,9 @@ def build_ordinary_plan(
         responses=(
             response,
         ),
-        clip=(
-            note_clips[
-                response.note
-            ]
-        ),
+        clip=note_clips[
+            response.note
+        ],
         note_duration_seconds=(
             NOTE_DURATION_SECONDS
         ),
@@ -1130,41 +1061,23 @@ def choose_playback_plan(
         special_name,
         pipe_activated,
     ) = choose_special_event(
-        event_director=(
-            event_director
-        ),
-        event_override=(
-            event_override
-        ),
-        pipe_triggers=(
-            args.pipe_triggers
-        ),
+        event_director=event_director,
+        event_override=event_override,
+        pipe_triggers=args.pipe_triggers,
     )
 
     if special_name is not None:
         return build_special_plan(
-            special_name=(
-                special_name
-            ),
-            pipe_activated=(
-                pipe_activated
-            ),
-            event_override=(
-                event_override
-            ),
-            special_clips=(
-                special_clips
-            ),
+            special_name=special_name,
+            pipe_activated=pipe_activated,
+            event_override=event_override,
+            special_clips=special_clips,
         )
 
     return build_ordinary_plan(
-        distance_mm=(
-            distance_mm
-        ),
+        distance_mm=distance_mm,
         mode=mode,
-        note_clips=(
-            note_clips
-        ),
+        note_clips=note_clips,
     )
 
 
@@ -1189,30 +1102,18 @@ def start_playback(
     runtime.light_cues = (
         build_light_cues(
             plan.responses,
-            start_time=(
-                response_time
-            ),
-            duration_seconds=(
-                plan.note_duration_seconds
-            ),
-            gap_seconds=(
-                plan.note_gap_seconds
-            ),
+            start_time=response_time,
+            duration_seconds=plan.note_duration_seconds,
+            gap_seconds=plan.note_gap_seconds,
         )
     )
 
     runtime.active_channel = (
         choose_active_light(
-            cues=(
-                runtime.light_cues
-            ),
+            cues=runtime.light_cues,
             channels=channels,
-            active_channel=(
-                runtime.active_channel
-            ),
-            now=(
-                response_time
-            ),
+            active_channel=runtime.active_channel,
+            now=response_time,
         )
     )
 
@@ -1292,24 +1193,16 @@ def handle_trigger(
 
         return None
 
-    plan = choose_playback_plan(
-        distance_mm=(
-            distance_mm
-        ),
-        args=args,
-        mode=mode,
-        event_director=(
-            event_director
-        ),
-        event_override=(
-            event_override
-        ),
-        note_clips=(
-            note_clips
-        ),
-        special_clips=(
-            special_clips
-        ),
+    plan = (
+        choose_playback_plan(
+            distance_mm=distance_mm,
+            args=args,
+            mode=mode,
+            event_director=event_director,
+            event_override=event_override,
+            note_clips=note_clips,
+            special_clips=special_clips,
+        )
     )
 
     start_playback(
@@ -1349,10 +1242,7 @@ def start_ordinary_instrument_response(
     distance_mm: int,
     args: argparse.Namespace,
     mode: ResponseMode,
-    keyboard: (
-        DistanceKeyboard
-        | None
-    ),
+    keyboard: DistanceKeyboard | None,
     piano: PianoEngine,
     channels: dict[
         str,
@@ -1393,9 +1283,7 @@ def start_ordinary_instrument_response(
 
     piano.note_on(
         note,
-        velocity=(
-            args.piano_velocity
-        ),
+        velocity=args.piano_velocity,
     )
 
     response_time = (
@@ -1403,7 +1291,6 @@ def start_ordinary_instrument_response(
     )
 
     runtime.light_cues = ()
-
     runtime.held_light_name = (
         response.light_name
     )
@@ -1459,10 +1346,7 @@ def handle_instrument_entry(
         str,
         AudioClip,
     ],
-    keyboard: (
-        DistanceKeyboard
-        | None
-    ),
+    keyboard: DistanceKeyboard | None,
     piano: PianoEngine,
     channels: dict[
         str,
@@ -1501,31 +1385,19 @@ def handle_instrument_entry(
         special_name,
         pipe_activated,
     ) = choose_special_event(
-        event_director=(
-            event_director
-        ),
-        event_override=(
-            event_override
-        ),
-        pipe_triggers=(
-            args.pipe_triggers
-        ),
+        event_director=event_director,
+        event_override=event_override,
+        pipe_triggers=args.pipe_triggers,
     )
 
     if special_name is not None:
-        plan = build_special_plan(
-            special_name=(
-                special_name
-            ),
-            pipe_activated=(
-                pipe_activated
-            ),
-            event_override=(
-                event_override
-            ),
-            special_clips=(
-                special_clips
-            ),
+        plan = (
+            build_special_plan(
+                special_name=special_name,
+                pipe_activated=pipe_activated,
+                event_override=event_override,
+                special_clips=special_clips,
+            )
         )
 
         start_playback(
@@ -1541,9 +1413,7 @@ def handle_instrument_entry(
 
     return (
         start_ordinary_instrument_response(
-            distance_mm=(
-                distance_mm
-            ),
+            distance_mm=distance_mm,
             args=args,
             mode=mode,
             keyboard=keyboard,
@@ -1567,10 +1437,7 @@ def finish_instrument_interaction(
 
     message = None
 
-    if (
-        runtime.instrument_note
-        is not None
-    ):
+    if runtime.instrument_note is not None:
         note = (
             runtime.instrument_note
         )
@@ -1589,10 +1456,9 @@ def finish_instrument_interaction(
         )
 
     runtime.instrument_note = None
-
     runtime.instrument_engaged = False
-
     runtime.held_light_name = None
+    runtime.distance_exit_samples = 0
 
     update_lighting(
         runtime,
@@ -1631,10 +1497,7 @@ def update_distance_instrument_note(
     # An interaction occupied by a special event or a dropped ENTER has no
     # instrument note. Do not suddenly start a piano halfway through it.
     #
-    if (
-        runtime.instrument_note
-        is None
-    ):
+    if runtime.instrument_note is None:
         return None
 
     response = (
@@ -1644,8 +1507,8 @@ def update_distance_instrument_note(
     )
 
     #
-    # Lighting uses the original three distance response bands even though
-    # the piano now has many chromatic virtual keys.
+    # Lighting uses three broad equal distance bands across the complete
+    # keyboard even though the piano may contain dozens of chromatic keys.
     #
     light_changed = (
         runtime.held_light_name
@@ -1667,10 +1530,7 @@ def update_distance_instrument_note(
             now=time.monotonic(),
         )
 
-    if (
-        selected_note
-        == runtime.instrument_note
-    ):
+    if selected_note == runtime.instrument_note:
         return None
 
     old_note = (
@@ -1683,9 +1543,7 @@ def update_distance_instrument_note(
 
     piano.note_on(
         selected_note,
-        velocity=(
-            args.piano_velocity
-        ),
+        velocity=args.piano_velocity,
     )
 
     runtime.instrument_note = (
@@ -1788,7 +1646,7 @@ def handle_distance_instrument_sample(
         )
 
     #
-    # Any valid in-range reading cancels a pending exit.
+    # Any in-range reading cancels a pending exit.
     #
     runtime.distance_exit_samples = 0
 
@@ -1798,29 +1656,21 @@ def handle_distance_instrument_sample(
     if not runtime.instrument_engaged:
         #
         # Mark the physical interaction engaged even if it is dropped.
-        # Otherwise the loop would retry ENTER every 33 ms until cooldown
+        # Otherwise the loop would retry ENTER every sample until cooldown
         # or the audio bus became available.
         #
         runtime.instrument_engaged = True
 
         return (
             handle_instrument_entry(
-                distance_mm=(
-                    distance_mm
-                ),
+                distance_mm=distance_mm,
                 args=args,
                 gate=gate,
                 mode=mode,
-                event_director=(
-                    event_director
-                ),
-                event_override=(
-                    event_override
-                ),
+                event_director=event_director,
+                event_override=event_override,
                 audio=audio,
-                special_clips=(
-                    special_clips
-                ),
+                special_clips=special_clips,
                 keyboard=keyboard,
                 piano=piano,
                 channels=channels,
@@ -1834,9 +1684,7 @@ def handle_distance_instrument_sample(
     #
     return (
         update_distance_instrument_note(
-            distance_mm=(
-                distance_mm
-            ),
+            distance_mm=distance_mm,
             args=args,
             mode=mode,
             keyboard=keyboard,
@@ -1875,22 +1723,14 @@ def handle_presence_instrument_event(
 
         return (
             handle_instrument_entry(
-                distance_mm=(
-                    distance_mm
-                ),
+                distance_mm=distance_mm,
                 args=args,
                 gate=gate,
                 mode=mode,
-                event_director=(
-                    event_director
-                ),
-                event_override=(
-                    event_override
-                ),
+                event_director=event_director,
+                event_override=event_override,
                 audio=audio,
-                special_clips=(
-                    special_clips
-                ),
+                special_clips=special_clips,
                 keyboard=None,
                 piano=piano,
                 channels=channels,
@@ -1919,10 +1759,7 @@ def handle_presence_instrument_event(
 
 def display_code_stage(
     *,
-    interaction_time: (
-        float
-        | None
-    ),
+    interaction_time: float | None,
     now: float,
 ) -> str:
     """Choose the simulated code line highlighted on the display."""
@@ -1951,10 +1788,7 @@ def display_code_stage(
 
 
 def piano_audio_active(
-    piano: (
-        PianoEngine
-        | None
-    ),
+    piano: PianoEngine | None,
 ) -> bool:
     """Return whether the application currently holds any piano keys."""
 
@@ -1970,18 +1804,12 @@ def clear_expired_display_response(
     runtime: RuntimeState,
     *,
     audio: AudioSystem,
-    piano: (
-        PianoEngine
-        | None
-    ),
+    piano: PianoEngine | None,
     now: float,
 ) -> None:
     """Return the presentation to idle after a completed response."""
 
-    if (
-        runtime.last_response_time
-        is None
-    ):
+    if runtime.last_response_time is None:
         return
 
     if (
@@ -1999,10 +1827,7 @@ def clear_expired_display_response(
     ):
         return
 
-    if (
-        runtime.active_channel
-        is not None
-    ):
+    if runtime.active_channel is not None:
         return
 
     runtime.display_note = None
@@ -2015,14 +1840,8 @@ def build_display_state(
     args: argparse.Namespace,
     runtime: RuntimeState,
     audio: AudioSystem,
-    piano: (
-        PianoEngine
-        | None
-    ),
-    distance_mm: (
-        int
-        | None
-    ),
+    piano: PianoEngine | None,
+    distance_mm: int | None,
     now: float,
 ) -> DisplayState:
     """Build a small state snapshot for the presentation process."""
@@ -2034,10 +1853,7 @@ def build_display_state(
         now=now,
     )
 
-    if (
-        args.articulation
-        == "instrument"
-    ):
+    if args.articulation == "instrument":
         trigger_state = (
             "HELD"
             if runtime.instrument_engaged
@@ -2050,8 +1866,7 @@ def build_display_state(
             is not None
             and (
                 now
-                - runtime
-                .last_interaction_time
+                - runtime.last_interaction_time
             )
             < 0.75
         )
@@ -2062,39 +1877,24 @@ def build_display_state(
             else "ARMED"
         )
 
-    if (
-        runtime.active_channel
-        is not None
-    ):
+    if runtime.active_channel is not None:
         light_name = (
-            runtime
-            .active_channel
+            runtime.active_channel
             .name
             .lower()
         )
 
     else:
         light_name = (
-            runtime
-            .display_light_name
+            runtime.display_light_name
         )
 
     return DisplayState(
-        distance_mm=(
-            distance_mm
-        ),
-        trigger_state=(
-            trigger_state
-        ),
-        response_mode=(
-            args.response_mode
-        ),
-        note=(
-            runtime.display_note
-        ),
-        light_name=(
-            light_name
-        ),
+        distance_mm=distance_mm,
+        trigger_state=trigger_state,
+        response_mode=args.response_mode,
+        note=runtime.display_note,
+        light_name=light_name,
         output_active=(
             runtime.active_channel
             is not None
@@ -2107,17 +1907,11 @@ def build_display_state(
         ),
         code_stage=(
             display_code_stage(
-                interaction_time=(
-                    runtime
-                    .last_interaction_time
-                ),
+                interaction_time=runtime.last_interaction_time,
                 now=now,
             )
         ),
-        special_text=(
-            runtime
-            .display_special_text
-        ),
+        special_text=runtime.display_special_text,
     )
 
 
@@ -2133,14 +1927,10 @@ def start_display_process(
         return DisplayProcess.start(
             initial_state=(
                 DisplayState(
-                    response_mode=(
-                        args.response_mode
-                    ),
+                    response_mode=args.response_mode,
                 )
             ),
-            refresh_hz=(
-                DISPLAY_HZ
-            ),
+            refresh_hz=DISPLAY_HZ,
         )
 
     except Exception as exc:
@@ -2150,30 +1940,20 @@ def start_display_process(
         )
 
         print(
-            "Continuing without the "
-            "presentation display."
+            "Continuing without the presentation display."
         )
 
         return None
 
 
 def publish_display_state(
-    display_process: (
-        DisplayProcess
-        | None
-    ),
+    display_process: DisplayProcess | None,
     *,
     args: argparse.Namespace,
     runtime: RuntimeState,
     audio: AudioSystem,
-    piano: (
-        PianoEngine
-        | None
-    ),
-    distance_mm: (
-        int
-        | None
-    ),
+    piano: PianoEngine | None,
+    distance_mm: int | None,
     now: float,
 ) -> DisplayProcess | None:
     """Publish the newest presentation state without blocking."""
@@ -2181,15 +1961,15 @@ def publish_display_state(
     if display_process is None:
         return None
 
-    state = build_display_state(
-        args=args,
-        runtime=runtime,
-        audio=audio,
-        piano=piano,
-        distance_mm=(
-            distance_mm
-        ),
-        now=now,
+    state = (
+        build_display_state(
+            args=args,
+            runtime=runtime,
+            audio=audio,
+            piano=piano,
+            distance_mm=distance_mm,
+            now=now,
+        )
     )
 
     if display_process.publish(
@@ -2219,8 +1999,7 @@ def publish_display_state(
         )
 
     print(
-        "Continuing without the "
-        "presentation display."
+        "Continuing without the presentation display."
     )
 
     return None
@@ -2275,58 +2054,27 @@ def run_demo(
     presence = None
     keyboard = None
 
-    if (
-        args.articulation
-        == "one-shot"
-    ):
+    if args.articulation == "one-shot":
         trigger = DistanceTrigger(
-            trigger_distance_mm=(
-                args.trigger_mm
-            ),
-            rearm_distance_mm=(
-                args.rearm_mm
-            ),
-            trigger_samples=(
-                args.trigger_samples
-            ),
-            rearm_samples=(
-                args.rearm_samples
-            ),
+            trigger_distance_mm=args.trigger_mm,
+            rearm_distance_mm=args.rearm_mm,
+            trigger_samples=args.trigger_samples,
+            rearm_samples=args.rearm_samples,
         )
 
-    elif (
-        args.response_mode
-        == "distance"
-    ):
-        keyboard = DistanceKeyboard(
-            near_distance_mm=(
-                args.keyboard_near_mm
-            ),
-            far_distance_mm=(
-                args.keyboard_far_mm
-            ),
-            low_note=(
-                args.keyboard_low_note
-            ),
-            high_note=(
-                args.keyboard_high_note
-            ),
+    elif args.response_mode == "distance":
+        keyboard = (
+            create_distance_keyboard(
+                args
+            )
         )
 
     else:
         presence = PresenceTracker(
-            enter_distance_mm=(
-                args.trigger_mm
-            ),
-            exit_distance_mm=(
-                args.rearm_mm
-            ),
-            enter_samples=(
-                args.trigger_samples
-            ),
-            exit_samples=(
-                args.rearm_samples
-            ),
+            enter_distance_mm=args.trigger_mm,
+            exit_distance_mm=args.rearm_mm,
+            enter_samples=args.trigger_samples,
+            exit_samples=args.rearm_samples,
         )
 
     gate = CooldownGate(
@@ -2339,9 +2087,7 @@ def run_demo(
 
     event_director = (
         SpecialEventDirector(
-            every_n_interactions=(
-                args.special_every
-            ),
+            every_n_interactions=args.special_every,
             event_names=tuple(
                 SPECIAL_SEQUENCES
             ),
@@ -2369,29 +2115,16 @@ def run_demo(
         piano = None
 
         try:
-            if (
-                args.articulation
-                == "instrument"
-            ):
+            if args.articulation == "instrument":
                 piano = PianoEngine(
-                    gain=(
-                        args.piano_gain
-                    ),
-                    velocity=(
-                        args.piano_velocity
-                    ),
+                    gain=args.piano_gain,
+                    velocity=args.piano_velocity,
                 )
 
             channels = {
-                "green": (
-                    lights.green
-                ),
-                "yellow": (
-                    lights.yellow
-                ),
-                "blue": (
-                    lights.blue
-                ),
+                "green": lights.green,
+                "yellow": lights.yellow,
+                "blue": lights.blue,
             }
 
             (
@@ -2429,7 +2162,6 @@ def run_demo(
 
             try:
                 while not should_stop():
-
                     # 1. Wait for the next sensor poll.
                     now = (
                         time.monotonic()
@@ -2470,10 +2202,7 @@ def run_demo(
                                 "INVALID SENSOR SAMPLE"
                             )
 
-                    elif (
-                        args.articulation
-                        == "one-shot"
-                    ):
+                    elif args.articulation == "one-shot":
                         if trigger is None:
                             raise RuntimeError(
                                 "One-shot trigger was not initialized."
@@ -2488,36 +2217,21 @@ def run_demo(
                         if fired:
                             message = (
                                 handle_trigger(
-                                    distance_mm=(
-                                        distance_mm
-                                    ),
+                                    distance_mm=distance_mm,
                                     args=args,
                                     gate=gate,
                                     mode=mode,
-                                    event_director=(
-                                        event_director
-                                    ),
-                                    event_override=(
-                                        event_override
-                                    ),
+                                    event_director=event_director,
+                                    event_override=event_override,
                                     audio=audio,
-                                    note_clips=(
-                                        note_clips
-                                    ),
-                                    special_clips=(
-                                        special_clips
-                                    ),
-                                    channels=(
-                                        channels
-                                    ),
+                                    note_clips=note_clips,
+                                    special_clips=special_clips,
+                                    channels=channels,
                                     runtime=runtime,
                                 )
                             )
 
-                    elif (
-                        args.response_mode
-                        == "distance"
-                    ):
+                    elif args.response_mode == "distance":
                         if (
                             keyboard is None
                             or piano is None
@@ -2528,29 +2242,17 @@ def run_demo(
 
                         message = (
                             handle_distance_instrument_sample(
-                                distance_mm=(
-                                    distance_mm
-                                ),
+                                distance_mm=distance_mm,
                                 args=args,
                                 gate=gate,
                                 mode=mode,
-                                event_director=(
-                                    event_director
-                                ),
-                                event_override=(
-                                    event_override
-                                ),
+                                event_director=event_director,
+                                event_override=event_override,
                                 audio=audio,
-                                special_clips=(
-                                    special_clips
-                                ),
-                                keyboard=(
-                                    keyboard
-                                ),
+                                special_clips=special_clips,
+                                keyboard=keyboard,
                                 piano=piano,
-                                channels=(
-                                    channels
-                                ),
+                                channels=channels,
                                 runtime=runtime,
                             )
                         )
@@ -2577,26 +2279,16 @@ def run_demo(
                             message = (
                                 handle_presence_instrument_event(
                                     event=event,
-                                    distance_mm=(
-                                        distance_mm
-                                    ),
+                                    distance_mm=distance_mm,
                                     args=args,
                                     gate=gate,
                                     mode=mode,
-                                    event_director=(
-                                        event_director
-                                    ),
-                                    event_override=(
-                                        event_override
-                                    ),
+                                    event_director=event_director,
+                                    event_override=event_override,
                                     audio=audio,
-                                    special_clips=(
-                                        special_clips
-                                    ),
+                                    special_clips=special_clips,
                                     piano=piano,
-                                    channels=(
-                                        channels
-                                    ),
+                                    channels=channels,
                                     runtime=runtime,
                                 )
                             )
@@ -2618,9 +2310,7 @@ def run_demo(
                             runtime=runtime,
                             audio=audio,
                             piano=piano,
-                            distance_mm=(
-                                distance_mm
-                            ),
+                            distance_mm=distance_mm,
                             now=sample_time,
                         )
                     )
@@ -2628,20 +2318,13 @@ def run_demo(
                     # 6. Schedule the next sensor poll.
                     next_sample = (
                         advance_sample_schedule(
-                            next_sample=(
-                                next_sample
-                            ),
-                            interval=(
-                                interval
-                            ),
+                            next_sample=next_sample,
+                            interval=interval,
                         )
                     )
 
             finally:
-                if (
-                    display_process
-                    is not None
-                ):
+                if display_process is not None:
                     display_process.close()
 
         finally:
@@ -2653,13 +2336,10 @@ def run_demo(
 # Program entry point
 # ---------------------------------------------------------------------------
 
-def main(
-) -> None:
+def main() -> None:
     """Run the Demo 2 application."""
 
-    args = (
-        parse_args()
-    )
+    args = parse_args()
 
     validate_args(
         args
@@ -2693,9 +2373,7 @@ def main(
         run_demo(
             args,
             should_stop=(
-                lambda: (
-                    stop_requested
-                )
+                lambda: stop_requested
             ),
         )
 
