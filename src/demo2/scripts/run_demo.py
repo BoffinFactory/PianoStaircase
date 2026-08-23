@@ -38,6 +38,8 @@ An optional Rich terminal presentation runs in a separate process so
 rendering cannot delay the timing-sensitive hardware loop.
 
 Press Ctrl+C to stop.
+
+This revision uses procedural falling pipes as the only periodic special.
 """
 
 from __future__ import annotations
@@ -149,8 +151,6 @@ KEYBOARD_HIGH_NOTE: int | None = None
 KEYBOARD_EXIT_SAMPLES = 3
 
 SPECIAL_EVERY = 8
-SPECIAL_NOTE_DURATION_SECONDS = 0.10
-SPECIAL_NOTE_GAP_SECONDS = 0.04
 
 PIPE_EVENT_NAME = "pipes"
 PIPE_OVERRIDE_TRIGGERS = 4
@@ -187,25 +187,10 @@ RESPONSES = (
 )
 
 #
-# Traditional specials still use generated WAV sequences. Procedural pipes
-# are deliberately excluded because they are now produced by PipeSystem.
+# Procedural falling pipes are the only periodic special event.
 #
-SPECIAL_SEQUENCES = {
-    "ascending": RESPONSES,
-    "descending": tuple(reversed(RESPONSES)),
-    "bounce": (
-        RESPONSES[0],
-        RESPONSES[2],
-        RESPONSES[1],
-        RESPONSES[2],
-    ),
-}
-
 SPECIAL_EVENT_NAMES = (
-    tuple(SPECIAL_SEQUENCES)
-    + (
-        PIPE_EVENT_NAME,
-    )
+    PIPE_EVENT_NAME,
 )
 
 ResponseMode = CycleMode | RandomMode | DistanceMode
@@ -595,15 +580,12 @@ def create_response_mode(
     )
 
 
-def create_audio_clips(
+def create_note_clips(
     audio: AudioSystem,
-) -> tuple[
-    dict[str, AudioClip],
-    dict[str, AudioClip],
-]:
-    """Pre-generate the WAV clips used by one-shot and classic specials."""
+) -> dict[str, AudioClip]:
+    """Pre-generate the short WAV notes used by legacy one-shot mode."""
 
-    note_clips = {
+    return {
         response.note: audio.create_sequence(
             (
                 response.note,
@@ -612,28 +594,6 @@ def create_audio_clips(
         )
         for response in RESPONSES
     }
-
-    special_clips = {
-        name: audio.create_sequence(
-            tuple(
-                response.note
-                for response
-                in responses
-            ),
-            note_duration_seconds=SPECIAL_NOTE_DURATION_SECONDS,
-            note_gap_seconds=SPECIAL_NOTE_GAP_SECONDS,
-        )
-        for (
-            name,
-            responses,
-        )
-        in SPECIAL_SEQUENCES.items()
-    }
-
-    return (
-        note_clips,
-        special_clips,
-    )
 
 
 def print_startup_summary(
@@ -951,56 +911,6 @@ def choose_special_event(
     )
 
 
-def build_special_plan(
-    *,
-    special_name: str,
-    special_clips: dict[
-        str,
-        AudioClip,
-    ],
-) -> PlaybackPlan:
-    """Build one of the classic generated-WAV special events."""
-
-    if special_name == PIPE_EVENT_NAME:
-        raise ValueError(
-            "Procedural pipes must be handled by PipeSystem."
-        )
-
-    responses = (
-        SPECIAL_SEQUENCES[
-            special_name
-        ]
-    )
-
-    notes = " ".join(
-        response.note
-        for response
-        in responses
-    )
-
-    return PlaybackPlan(
-        responses=responses,
-        clip=special_clips[
-            special_name
-        ],
-        note_duration_seconds=(
-            SPECIAL_NOTE_DURATION_SECONDS
-        ),
-        note_gap_seconds=(
-            SPECIAL_NOTE_GAP_SECONDS
-        ),
-        console_message=(
-            "SPECIAL "
-            f"{special_name.upper()} "
-            f"-> {notes}"
-        ),
-        special_text=(
-            "SPECIAL // "
-            f"{special_name.upper()}"
-        ),
-    )
-
-
 def start_pipe_response(
     *,
     distance_mm: int,
@@ -1243,10 +1153,6 @@ def handle_trigger(
         str,
         AudioClip,
     ],
-    special_clips: dict[
-        str,
-        AudioClip,
-    ],
     pipes: PipeSystem | None,
     channels: dict[
         str,
@@ -1300,17 +1206,16 @@ def handle_trigger(
         )
 
     if special_name is not None:
-        plan = build_special_plan(
-            special_name=special_name,
-            special_clips=special_clips,
+        raise RuntimeError(
+            "Unknown special event selected: "
+            f"{special_name}"
         )
 
-    else:
-        plan = build_ordinary_plan(
-            distance_mm=distance_mm,
-            mode=mode,
-            note_clips=note_clips,
-        )
+    plan = build_ordinary_plan(
+        distance_mm=distance_mm,
+        mode=mode,
+        note_clips=note_clips,
+    )
 
     start_playback(
         plan,
@@ -1449,10 +1354,6 @@ def handle_instrument_entry(
     event_director: SpecialEventDirector,
     event_override: TemporaryEventOverride,
     audio: AudioSystem,
-    special_clips: dict[
-        str,
-        AudioClip,
-    ],
     keyboard: DistanceKeyboard | None,
     piano: PianoEngine,
     pipes: PipeSystem | None,
@@ -1515,22 +1416,9 @@ def handle_instrument_entry(
         )
 
     if special_name is not None:
-        plan = (
-            build_special_plan(
-                special_name=special_name,
-                special_clips=special_clips,
-            )
-        )
-
-        start_playback(
-            plan,
-            audio=audio,
-            channels=channels,
-            runtime=runtime,
-        )
-
-        return (
-            plan.console_message
+        raise RuntimeError(
+            "Unknown special event selected: "
+            f"{special_name}"
         )
 
     return (
@@ -1702,10 +1590,6 @@ def handle_distance_instrument_sample(
     event_director: SpecialEventDirector,
     event_override: TemporaryEventOverride,
     audio: AudioSystem,
-    special_clips: dict[
-        str,
-        AudioClip,
-    ],
     keyboard: DistanceKeyboard,
     piano: PianoEngine,
     pipes: PipeSystem | None,
@@ -1793,7 +1677,6 @@ def handle_distance_instrument_sample(
                 event_director=event_director,
                 event_override=event_override,
                 audio=audio,
-                special_clips=special_clips,
                 keyboard=keyboard,
                 piano=piano,
                 pipes=pipes,
@@ -1829,10 +1712,6 @@ def handle_presence_instrument_event(
     event_director: SpecialEventDirector,
     event_override: TemporaryEventOverride,
     audio: AudioSystem,
-    special_clips: dict[
-        str,
-        AudioClip,
-    ],
     piano: PianoEngine,
     pipes: PipeSystem | None,
     channels: dict[
@@ -1855,7 +1734,6 @@ def handle_presence_instrument_event(
                 event_director=event_director,
                 event_override=event_override,
                 audio=audio,
-                special_clips=special_clips,
                 keyboard=None,
                 piano=piano,
                 pipes=pipes,
@@ -2347,11 +2225,18 @@ def run_demo(
                 "blue": lights.blue,
             }
 
-            (
-                note_clips,
-                special_clips,
-            ) = create_audio_clips(
-                audio
+            #
+            # Legacy generated sine-wave notes are needed only by one-shot
+            # articulation. Instrument mode uses the sampled piano and real
+            # procedural pipes exclusively, so do not even generate the old
+            # WAV clips there.
+            #
+            note_clips = (
+                create_note_clips(
+                    audio
+                )
+                if args.articulation == "one-shot"
+                else {}
             )
 
             lights.all_off()
@@ -2467,7 +2352,6 @@ def run_demo(
                                     event_override=event_override,
                                     audio=audio,
                                     note_clips=note_clips,
-                                    special_clips=special_clips,
                                     pipes=pipes,
                                     channels=channels,
                                     runtime=runtime,
@@ -2492,7 +2376,6 @@ def run_demo(
                                 event_director=event_director,
                                 event_override=event_override,
                                 audio=audio,
-                                special_clips=special_clips,
                                 keyboard=keyboard,
                                 piano=piano,
                                 pipes=pipes,
@@ -2530,7 +2413,6 @@ def run_demo(
                                     event_director=event_director,
                                     event_override=event_override,
                                     audio=audio,
-                                    special_clips=special_clips,
                                     piano=piano,
                                     pipes=pipes,
                                     channels=channels,
