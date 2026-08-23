@@ -101,19 +101,9 @@ wait_for_pipewire() {
 
 while true; do
 
-	#
-	# Maintenance mode lets us pause the appliance from SSH without ever
-	# exposing a local command prompt.
-	#
-
 	if [ -e "$MAINTENANCE_FILE" ]; then
 		wait_for_maintenance_mode
 	fi
-
-	#
-	# If installation files are missing, remain on the exhibit console and
-	# retry rather than returning to a shell.
-	#
 
 	if [ ! -d "$DEMO_DIR" ]; then
 		clear
@@ -156,31 +146,24 @@ while true; do
 	source "$VENV_DIR/bin/activate"
 
 	wait_for_pipewire
-
 	clear
 
 	# -----------------------------------------------------------------------
 	# Normal event configuration
 	# -----------------------------------------------------------------------
 	#
-	# Change command-line options here if the event defaults change later.
+	# Normal unattended behavior is the stable three-zone Vibraphone mode.
+	# Procedural pipes are explicitly disabled and remain development/Kayleigh
+	# machinery rather than a random visitor special.
 	#
 
 	./scripts/run_demo.py \
 		--display \
 		--articulation instrument \
-		--response-mode random \
+		--response-mode zones \
 		--special-every 0
 
 	exit_status=$?
-
-	# -----------------------------------------------------------------------
-	# The application stopped
-	# -----------------------------------------------------------------------
-	#
-	# Ctrl+C, an unexpected Python failure, or most other exits simply return
-	# here. Never expose the shell: briefly report the condition and restart.
-	#
 
 	clear
 

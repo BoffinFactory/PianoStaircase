@@ -1,0 +1,473 @@
+"""Persistent sampled-instrument interaction behavior for Demo 2."""
+
+from __future__ import annotations
+
+import argparse
+import time
+
+from piano_staircase_demo.app_config import (
+    KEYBOARD_EXIT_SAMPLES,
+    PIPE_EVENT_NAME,
+    RESPONSES,
+    ResponseMode,
+)
+from piano_staircase_demo.articulation import DistanceKeyboard, midi_note_name
+from piano_staircase_demo.audio import AudioSystem
+from piano_staircase_demo.events import (
+    SpecialEventDirector,
+    TemporaryEventOverride,
+)
+from piano_staircase_demo.interaction import CooldownGate
+from piano_staircase_demo.lighting import (
+    LightingChannel,
+    update_lighting,
+)
+from piano_staircase_demo.piano import PianoEngine
+from piano_staircase_demo.pipes import PipeSystem
+from piano_staircase_demo.presence import PresenceEvent
+from piano_staircase_demo.runtime import RuntimeState
+from piano_staircase_demo.specials import (
+    choose_special_event,
+    start_pipe_response,
+)
+from piano_staircase_demo.zones import DistanceZoneTracker
+
+
+def instrument_note_label(note: str | int) -> str:
+    """Return a display-friendly name for an instrument note."""
+
+    return note if isinstance(note, str) else midi_note_name(note)
+
+
+# ---------------------------------------------------------------------------
+# Existing cycle/random/distance instrument behavior
+# ---------------------------------------------------------------------------
+
+def start_ordinary_instrument_response(
+    *,
+    distance_mm: int,
+    args: argparse.Namespace,
+    mode: ResponseMode,
+    keyboard: DistanceKeyboard | None,
+    piano: PianoEngine,
+    channels: dict[str, LightingChannel],
+    runtime: RuntimeState,
+) -> str:
+    """Start one sustained ordinary instrument response."""
+
+    response = mode.next_response(distance_mm)
+
+    if args.response_mode == "distance":
+        if keyboard is None:
+            raise RuntimeError("Distance keyboard was not initialized.")
+
+        note = keyboard.note_for_distance(distance_mm)
+
+        if note is None:
+            raise RuntimeError(
+                "Instrument entry occurred outside the distance keyboard."
+            )
+    else:
+        note = response.note
+
+    piano.note_on(note, velocity=args.piano_velocity)
+
+    response_time = time.monotonic()
+    runtime.light_cues = ()
+    runtime.held_light_name = response.light_name
+    runtime.instrument_note = note
+    runtime.instrument_note_release_time = None
+    runtime.last_interaction_time = response_time
+    runtime.last_response_time = response_time
+    runtime.display_note = instrument_note_label(note)
+    runtime.display_light_name = response.light_name
+    runtime.display_special_text = None
+
+    update_lighting(runtime, channels=channels, now=response_time)
+
+    return (
+        f"{instrument_note_label(note)} -> "
+        f"{response.light_name.upper()} (INSTRUMENT)"
+    )
+
+
+def handle_instrument_entry(
+    *,
+    distance_mm: int,
+    args: argparse.Namespace,
+    gate: CooldownGate,
+    mode: ResponseMode,
+    event_director: SpecialEventDirector,
+    event_override: TemporaryEventOverride,
+    audio: AudioSystem,
+    keyboard: DistanceKeyboard | None,
+    piano: PianoEngine,
+    pipes: PipeSystem | None,
+    channels: dict[str, LightingChannel],
+    runtime: RuntimeState,
+) -> str | None:
+    """Handle exactly one physical legacy instrument entry."""
+
+    if audio.is_playing:
+        return f"{distance_mm:4d} mm -> DROP AUDIO BUSY" if args.verbose else None
+
+    if not gate.allow():
+        return f"{distance_mm:4d} mm -> DROP COOLDOWN" if args.verbose else None
+
+    special_name, pipe_activated = choose_special_event(
+        event_director=event_director,
+        event_override=event_override,
+        pipe_triggers=args.pipe_triggers,
+    )
+
+    if special_name == PIPE_EVENT_NAME:
+        if pipes is None:
+            raise RuntimeError(
+                "Pipe special selected without an initialized PipeSystem."
+            )
+
+        return start_pipe_response(
+            distance_mm=distance_mm,
+            mode=mode,
+            pipe_activated=pipe_activated,
+            event_override=event_override,
+            pipes=pipes,
+            channels=channels,
+            runtime=runtime,
+        )
+
+    if special_name is not None:
+        raise RuntimeError(f"Unknown special event selected: {special_name}")
+
+    return start_ordinary_instrument_response(
+        distance_mm=distance_mm,
+        args=args,
+        mode=mode,
+        keyboard=keyboard,
+        piano=piano,
+        channels=channels,
+        runtime=runtime,
+    )
+
+
+def finish_instrument_interaction(
+    *,
+    piano: PianoEngine,
+    channels: dict[str, LightingChannel],
+    runtime: RuntimeState,
+) -> str | None:
+    """Release a held instrument note and end the physical interaction."""
+
+    message = None
+
+    if runtime.instrument_note is not None:
+        note = runtime.instrument_note
+        piano.note_off(note)
+        message = f"NOTE OFF {instrument_note_label(note)}"
+        runtime.last_response_time = time.monotonic()
+
+    runtime.instrument_note = None
+    runtime.instrument_note_release_time = None
+    runtime.instrument_engaged = False
+    runtime.held_light_name = None
+    runtime.distance_exit_samples = 0
+
+    update_lighting(runtime, channels=channels, now=time.monotonic())
+    return message
+
+
+def update_distance_instrument_note(
+    *,
+    distance_mm: int,
+    args: argparse.Namespace,
+    mode: ResponseMode,
+    keyboard: DistanceKeyboard,
+    piano: PianoEngine,
+    channels: dict[str, LightingChannel],
+    runtime: RuntimeState,
+) -> str | None:
+    """Change the held pitch while remaining inside the distance keyboard."""
+
+    selected_note = keyboard.note_for_distance(distance_mm)
+
+    if selected_note is None:
+        return None
+
+    # A special event or dropped interaction may be engaged without owning a
+    # piano note. Do not suddenly start a piano halfway through it.
+    if runtime.instrument_note is None:
+        return None
+
+    response = mode.next_response(distance_mm)
+
+    # Lighting remains three broad bands even though the piano may expose
+    # dozens of chromatic keys.
+    if runtime.held_light_name != response.light_name:
+        runtime.held_light_name = response.light_name
+        runtime.display_light_name = response.light_name
+        update_lighting(runtime, channels=channels, now=time.monotonic())
+
+    if selected_note == runtime.instrument_note:
+        return None
+
+    old_note = runtime.instrument_note
+    piano.note_off(old_note)
+    piano.note_on(selected_note, velocity=args.piano_velocity)
+
+    runtime.instrument_note = selected_note
+    runtime.last_response_time = time.monotonic()
+    runtime.display_note = midi_note_name(selected_note)
+
+    if args.verbose:
+        return (
+            f"{distance_mm:4d} mm -> "
+            f"{instrument_note_label(old_note)} -> "
+            f"{midi_note_name(selected_note)}"
+        )
+
+    return None
+
+
+def handle_distance_instrument_sample(
+    *,
+    distance_mm: int,
+    args: argparse.Namespace,
+    gate: CooldownGate,
+    mode: ResponseMode,
+    event_director: SpecialEventDirector,
+    event_override: TemporaryEventOverride,
+    audio: AudioSystem,
+    keyboard: DistanceKeyboard,
+    piano: PianoEngine,
+    pipes: PipeSystem | None,
+    channels: dict[str, LightingChannel],
+    runtime: RuntimeState,
+) -> str | None:
+    """
+    Process one reading for the proven full chromatic distance keyboard.
+
+    The existing three-consecutive-far-sample EXIT debounce is intentionally
+    preserved here unchanged in semantics.
+    """
+
+    selected_note = keyboard.note_for_distance(distance_mm)
+
+    if selected_note is None:
+        if not runtime.instrument_engaged:
+            runtime.distance_exit_samples = 0
+            return None
+
+        runtime.distance_exit_samples += 1
+
+        if runtime.distance_exit_samples < KEYBOARD_EXIT_SAMPLES:
+            if args.verbose:
+                return (
+                    f"{distance_mm:4d} mm -> EXIT CANDIDATE "
+                    f"{runtime.distance_exit_samples}/{KEYBOARD_EXIT_SAMPLES}"
+                )
+            return None
+
+        runtime.distance_exit_samples = 0
+        return finish_instrument_interaction(
+            piano=piano,
+            channels=channels,
+            runtime=runtime,
+        )
+
+    # Any in-range reading cancels a pending exit.
+    runtime.distance_exit_samples = 0
+
+    if not runtime.instrument_engaged:
+        # Mark engaged even if ENTER is dropped so the loop does not retry on
+        # every sensor sample until cooldown/audio becomes available.
+        runtime.instrument_engaged = True
+        return handle_instrument_entry(
+            distance_mm=distance_mm,
+            args=args,
+            gate=gate,
+            mode=mode,
+            event_director=event_director,
+            event_override=event_override,
+            audio=audio,
+            keyboard=keyboard,
+            piano=piano,
+            pipes=pipes,
+            channels=channels,
+            runtime=runtime,
+        )
+
+    return update_distance_instrument_note(
+        distance_mm=distance_mm,
+        args=args,
+        mode=mode,
+        keyboard=keyboard,
+        piano=piano,
+        channels=channels,
+        runtime=runtime,
+    )
+
+
+def handle_presence_instrument_event(
+    *,
+    event: PresenceEvent,
+    distance_mm: int,
+    args: argparse.Namespace,
+    gate: CooldownGate,
+    mode: ResponseMode,
+    event_director: SpecialEventDirector,
+    event_override: TemporaryEventOverride,
+    audio: AudioSystem,
+    piano: PianoEngine,
+    pipes: PipeSystem | None,
+    channels: dict[str, LightingChannel],
+    runtime: RuntimeState,
+) -> str | None:
+    """Handle ENTER/EXIT for cycle/random instrument articulation."""
+
+    if event is PresenceEvent.ENTER:
+        runtime.instrument_engaged = True
+        return handle_instrument_entry(
+            distance_mm=distance_mm,
+            args=args,
+            gate=gate,
+            mode=mode,
+            event_director=event_director,
+            event_override=event_override,
+            audio=audio,
+            keyboard=None,
+            piano=piano,
+            pipes=pipes,
+            channels=channels,
+            runtime=runtime,
+        )
+
+    if event is PresenceEvent.EXIT:
+        return finish_instrument_interaction(
+            piano=piano,
+            channels=channels,
+            runtime=runtime,
+        )
+
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Normal three-zone Vibraphone behavior
+# ---------------------------------------------------------------------------
+
+def service_zone_note_release(
+    *,
+    piano: PianoEngine,
+    runtime: RuntimeState,
+    now: float,
+) -> None:
+    """Release a zone strike after its configured NOTE ON duration."""
+
+    release_time = runtime.instrument_note_release_time
+
+    if release_time is None or now < release_time:
+        return
+
+    if runtime.instrument_note is not None:
+        piano.note_off(runtime.instrument_note)
+
+    runtime.instrument_note = None
+    runtime.instrument_note_release_time = None
+
+
+def start_zone_response(
+    *,
+    response_index: int,
+    args: argparse.Namespace,
+    piano: PianoEngine,
+    channels: dict[str, LightingChannel],
+    runtime: RuntimeState,
+    is_entry: bool,
+) -> str:
+    """Strike one Vibraphone note and switch to one stable zone light."""
+
+    response = RESPONSES[response_index]
+    response_time = time.monotonic()
+
+    # If a visitor crosses a zone boundary before the previous 800 ms hold
+    # expires, release that key normally. The SoundFont tail may continue to
+    # decay; do not use all-sounds-off here.
+    if runtime.instrument_note is not None:
+        piano.note_off(runtime.instrument_note)
+
+    piano.note_on(response.note, velocity=args.piano_velocity)
+
+    runtime.instrument_note = response.note
+    runtime.instrument_note_release_time = (
+        response_time + args.zone_note_hold
+    )
+    runtime.instrument_engaged = True
+    runtime.light_cues = ()
+    runtime.held_light_name = response.light_name
+
+    if is_entry:
+        runtime.last_interaction_time = response_time
+
+    runtime.last_response_time = response_time
+    runtime.display_note = response.note
+    runtime.display_light_name = response.light_name
+    runtime.display_special_text = None
+
+    update_lighting(runtime, channels=channels, now=response_time)
+
+    return f"{response.note} -> {response.light_name.upper()} (ZONE)"
+
+
+def finish_zone_interaction(
+    *,
+    piano: PianoEngine,
+    channels: dict[str, LightingChannel],
+    runtime: RuntimeState,
+) -> str:
+    """Leave the entire zone range and turn the continuous light off."""
+
+    if runtime.instrument_note is not None:
+        piano.note_off(runtime.instrument_note)
+
+    runtime.instrument_note = None
+    runtime.instrument_note_release_time = None
+    runtime.instrument_engaged = False
+    runtime.held_light_name = None
+    runtime.light_cues = ()
+    runtime.last_response_time = time.monotonic()
+
+    update_lighting(runtime, channels=channels, now=time.monotonic())
+    return "ZONE EXIT -> LIGHTS OFF"
+
+
+def handle_zone_instrument_sample(
+    *,
+    distance_mm: int,
+    args: argparse.Namespace,
+    tracker: DistanceZoneTracker,
+    piano: PianoEngine,
+    channels: dict[str, LightingChannel],
+    runtime: RuntimeState,
+) -> str | None:
+    """Process one valid distance reading for normal three-zone behavior."""
+
+    transition = tracker.update(distance_mm)
+
+    if transition is None:
+        return None
+
+    if transition.current_zone is None:
+        return finish_zone_interaction(
+            piano=piano,
+            channels=channels,
+            runtime=runtime,
+        )
+
+    return start_zone_response(
+        response_index=transition.current_zone,
+        args=args,
+        piano=piano,
+        channels=channels,
+        runtime=runtime,
+        is_entry=transition.previous_zone is None,
+    )
