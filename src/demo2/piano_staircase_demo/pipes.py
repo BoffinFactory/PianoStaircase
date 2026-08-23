@@ -1043,6 +1043,16 @@ class PipeSystem:
             .pop(0)
         )
 
+        #
+        # A previously completed pipe may still have long Tubular Bell release
+        # tails sounding on this recycled channel. Clear those voices before the
+        # channel is assigned to a new physical pipe so release tails cannot
+        # accumulate across repeated interactions.
+        #
+        self._synth.all_sounds_off(
+            channel
+        )
+
         pipe_id = (
             self._next_pipe_id
         )
@@ -1245,9 +1255,11 @@ class PipeSystem:
             # Once the final impact's physical contact has ended, the
             # simulation itself is complete.
             #
-            # We deliberately do NOT send All Sounds Off here. FluidSynth's
-            # natural Tubular Bell release tail is allowed to keep ringing.
-            # The MIDI channel can safely be reused for another pipe.
+            # Do not cut off the final resonance when the physical simulation ends.
+            # The Tubular Bell release tail may continue naturally while the channel
+            # remains idle. If this channel is later reused, start_pipe() clears the
+            # old tail first so completed simulations cannot accumulate synth voices
+            # indefinitely.
             #
             if (
                 active.sounding_notes
