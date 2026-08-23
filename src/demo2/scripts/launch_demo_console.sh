@@ -168,7 +168,9 @@ while true; do
 
 	./scripts/run_demo.py \
 		--display \
-		--response-mode random
+		--articulation instrument \
+		--response-mode random \
+		--special-every 0
 
 	exit_status=$?
 

@@ -110,10 +110,12 @@ LIGHT_BRIGHTNESS_PERCENT = 100
 RESPONSE_MODE = "cycle"
 
 #
-# Keep the old behavior as the default until the new instrument path has
-# passed the complete integrated hardware test.
+# The persistent sampled-piano path is now the normal Demo 2 behavior.
 #
-ARTICULATION = "one-shot"
+# The original generated sine-wave one-shot path remains available only as
+# legacy/development behavior; the exhibit should use instrument articulation.
+#
+ARTICULATION = "instrument"
 
 PIANO_GAIN = DEFAULT_GAIN
 PIANO_VELOCITY = DEFAULT_VELOCITY
@@ -150,7 +152,14 @@ KEYBOARD_HIGH_NOTE: int | None = None
 #
 KEYBOARD_EXIT_SAMPLES = 3
 
-SPECIAL_EVERY = 8
+#
+# Normal Demo 2 operation has no periodic special events.
+#
+# Procedural falling pipes are reserved for the secret Kayleigh Mode. The
+# existing pipe-event machinery remains temporarily available for explicit
+# development/stress testing until Kayleigh Mode owns it directly.
+#
+SPECIAL_EVERY = 0
 
 PIPE_EVENT_NAME = "pipes"
 PIPE_OVERRIDE_TRIGGERS = 4
