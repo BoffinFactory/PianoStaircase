@@ -140,6 +140,8 @@ PIPE_OVERRIDE_TRIGGERS = 4
 DISPLAY_HZ = 5.0
 DISPLAY_RESPONSE_HOLD_SECONDS = 0.75
 
+KEYBOARD_EXIT_SAMPLES = 3
+
 
 # ---------------------------------------------------------------------------
 # Musical / lighting responses
@@ -287,6 +289,8 @@ class RuntimeState:
         str
         | None
     ) = None
+
+    distance_exit_samples: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -1737,6 +1741,10 @@ def handle_distance_instrument_sample(
 
     Crossing virtual note boundaries while still inside that range changes
     musical pitch but does not increment interaction/event counters.
+
+    Leaving the keyboard requires several consecutive far readings so a
+    transient VL53L0X far/out-of-range sample cannot falsely end and
+    immediately restart an interaction.
     """
 
     selected_note = (
@@ -1746,19 +1754,43 @@ def handle_distance_instrument_sample(
     )
 
     #
-    # Leave the keyboard.
+    # Reading is outside the keyboard.
     #
     if selected_note is None:
-        if runtime.instrument_engaged:
-            return (
-                finish_instrument_interaction(
-                    piano=piano,
-                    channels=channels,
-                    runtime=runtime,
-                )
-            )
+        if not runtime.instrument_engaged:
+            runtime.distance_exit_samples = 0
+            return None
 
-        return None
+        runtime.distance_exit_samples += 1
+
+        if (
+            runtime.distance_exit_samples
+            < KEYBOARD_EXIT_SAMPLES
+        ):
+            if args.verbose:
+                return (
+                    f"{distance_mm:4d} mm "
+                    "-> EXIT CANDIDATE "
+                    f"{runtime.distance_exit_samples}/"
+                    f"{KEYBOARD_EXIT_SAMPLES}"
+                )
+
+            return None
+
+        runtime.distance_exit_samples = 0
+
+        return (
+            finish_instrument_interaction(
+                piano=piano,
+                channels=channels,
+                runtime=runtime,
+            )
+        )
+
+    #
+    # Any valid in-range reading cancels a pending exit.
+    #
+    runtime.distance_exit_samples = 0
 
     #
     # Enter the keyboard.
