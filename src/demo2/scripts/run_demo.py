@@ -31,6 +31,9 @@ Two articulation styles are supported:
             physical sensor span using approximately real-piano key density.
             Moving the hand changes the held note continuously.
 
+The piano and procedural falling-pipe system share one persistent FluidSynth
+process. Piano uses MIDI channel 0; falling pipes use channels 1-6.
+
 An optional Rich terminal presentation runs in a separate process so
 rendering cannot delay the timing-sensitive hardware loop.
 
@@ -73,11 +76,15 @@ from piano_staircase_demo.piano import (
     DEFAULT_VELOCITY,
     PianoEngine,
 )
+from piano_staircase_demo.pipes import (
+    PipeSystem,
+)
 from piano_staircase_demo.presence import (
     PresenceEvent,
     PresenceTracker,
 )
 from piano_staircase_demo.sensor import DistanceSensor
+from piano_staircase_demo.synth import FluidSynthEngine
 from piano_staircase_demo.terminal_display import DisplayState
 from piano_staircase_demo.trigger import DistanceTrigger
 
@@ -148,6 +155,14 @@ SPECIAL_NOTE_GAP_SECONDS = 0.04
 PIPE_EVENT_NAME = "pipes"
 PIPE_OVERRIDE_TRIGGERS = 4
 
+#
+# PipeSystem itself is nonblocking. While one or more pipes are active, wake
+# the cooperative main loop frequently enough to preserve short contact
+# times and impact timing without increasing the VL53L0X polling rate.
+#
+PIPE_UPDATE_HZ = 200.0
+PIPE_LIGHT_DURATION_SECONDS = 0.15
+
 DISPLAY_HZ = 5.0
 DISPLAY_RESPONSE_HOLD_SECONDS = 0.75
 
@@ -171,13 +186,10 @@ RESPONSES = (
     ),
 )
 
-PIPE_PLACEHOLDER_RESPONSES = (
-    RESPONSES[2],
-    RESPONSES[0],
-    RESPONSES[2],
-    RESPONSES[1],
-)
-
+#
+# Traditional specials still use generated WAV sequences. Procedural pipes
+# are deliberately excluded because they are now produced by PipeSystem.
+#
 SPECIAL_SEQUENCES = {
     "ascending": RESPONSES,
     "descending": tuple(reversed(RESPONSES)),
@@ -187,8 +199,14 @@ SPECIAL_SEQUENCES = {
         RESPONSES[1],
         RESPONSES[2],
     ),
-    PIPE_EVENT_NAME: PIPE_PLACEHOLDER_RESPONSES,
 }
+
+SPECIAL_EVENT_NAMES = (
+    tuple(SPECIAL_SEQUENCES)
+    + (
+        PIPE_EVENT_NAME,
+    )
+)
 
 ResponseMode = CycleMode | RandomMode | DistanceMode
 
@@ -350,7 +368,7 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=PIANO_GAIN,
         help=(
-            "FluidSynth master gain in instrument mode "
+            "FluidSynth master gain in instrument mode / procedural pipes "
             f"(default: {PIANO_GAIN:g})."
         ),
     )
@@ -583,7 +601,7 @@ def create_audio_clips(
     dict[str, AudioClip],
     dict[str, AudioClip],
 ]:
-    """Pre-generate the WAV clips used by one-shot and special events."""
+    """Pre-generate the WAV clips used by one-shot and classic specials."""
 
     note_clips = {
         response.note: audio.create_sequence(
@@ -689,6 +707,21 @@ def print_startup_summary(
                 f"{keyboard.actual_semitone_width_mm:.1f} mm/semitone "
                 f"across {keyboard.playable_span_mm} mm"
             )
+
+    print(
+        "Special events: "
+        + (
+            f"every {args.special_every} accepted interactions"
+            if args.special_every > 0
+            else "disabled"
+        )
+    )
+
+    if args.special_every > 0:
+        print(
+            "Pipe override:   "
+            f"{args.pipe_triggers} interactions"
+        )
 
     print(
         "Terminal display: "
@@ -921,14 +954,17 @@ def choose_special_event(
 def build_special_plan(
     *,
     special_name: str,
-    pipe_activated: bool,
-    event_override: TemporaryEventOverride,
     special_clips: dict[
         str,
         AudioClip,
     ],
 ) -> PlaybackPlan:
-    """Build the one-shot plan for a special event."""
+    """Build one of the classic generated-WAV special events."""
+
+    if special_name == PIPE_EVENT_NAME:
+        raise ValueError(
+            "Procedural pipes must be handled by PipeSystem."
+        )
 
     responses = (
         SPECIAL_SEQUENCES[
@@ -942,48 +978,6 @@ def build_special_plan(
         in responses
     )
 
-    if special_name == PIPE_EVENT_NAME:
-        remaining = (
-            event_override
-            .remaining_interactions
-        )
-
-        if pipe_activated:
-            console_message = (
-                "SPECIAL PIPES MODE -> "
-                f"{notes} "
-                f"({remaining} remaining)"
-            )
-
-            special_text = (
-                "PIPES MODE // "
-                f"{remaining} REMAINING"
-            )
-
-        else:
-            console_message = (
-                "PIPES OVERRIDE -> "
-                f"{notes} "
-                f"({remaining} remaining)"
-            )
-
-            special_text = (
-                "PIPES OVERRIDE // "
-                f"{remaining} REMAINING"
-            )
-
-    else:
-        console_message = (
-            "SPECIAL "
-            f"{special_name.upper()} "
-            f"-> {notes}"
-        )
-
-        special_text = (
-            "SPECIAL // "
-            f"{special_name.upper()}"
-        )
-
     return PlaybackPlan(
         responses=responses,
         clip=special_clips[
@@ -995,8 +989,136 @@ def build_special_plan(
         note_gap_seconds=(
             SPECIAL_NOTE_GAP_SECONDS
         ),
-        console_message=console_message,
-        special_text=special_text,
+        console_message=(
+            "SPECIAL "
+            f"{special_name.upper()} "
+            f"-> {notes}"
+        ),
+        special_text=(
+            "SPECIAL // "
+            f"{special_name.upper()}"
+        ),
+    )
+
+
+def start_pipe_response(
+    *,
+    distance_mm: int,
+    mode: ResponseMode,
+    pipe_activated: bool,
+    event_override: TemporaryEventOverride,
+    pipes: PipeSystem,
+    channels: dict[
+        str,
+        LightingChannel,
+    ],
+    runtime: RuntimeState,
+) -> str:
+    """Launch one real nonblocking procedural falling-pipe response."""
+
+    response_time = (
+        time.monotonic()
+    )
+
+    pipe = pipes.start_pipe(
+        now=response_time
+    )
+
+    if pipe is None:
+        runtime.last_interaction_time = (
+            response_time
+        )
+
+        runtime.last_response_time = (
+            response_time
+        )
+
+        runtime.display_note = None
+        runtime.display_light_name = None
+        runtime.display_special_text = (
+            "PIPES // ALL CHANNELS BUSY"
+        )
+
+        return (
+            "PIPES -> ALL CHANNELS BUSY "
+            f"({pipes.active_count}/{pipes.maximum_pipes} active)"
+        )
+
+    #
+    # Give each pipe trigger a brief distance/mode-selected light cue. The
+    # light is intentionally not held for the duration of the hand presence:
+    # the falling pipe continues independently after the physical interaction.
+    #
+    response = (
+        mode.next_response(
+            distance_mm
+        )
+    )
+
+    runtime.held_light_name = None
+
+    runtime.light_cues = (
+        LightCue(
+            light_name=response.light_name,
+            start_time=response_time,
+            end_time=(
+                response_time
+                + PIPE_LIGHT_DURATION_SECONDS
+            ),
+        ),
+    )
+
+    runtime.active_channel = (
+        choose_active_light(
+            cues=runtime.light_cues,
+            channels=channels,
+            active_channel=runtime.active_channel,
+            now=response_time,
+        )
+    )
+
+    runtime.last_interaction_time = (
+        response_time
+    )
+
+    runtime.last_response_time = (
+        response_time
+    )
+
+    runtime.display_note = (
+        f"PIPE #{pipe.pipe_id}"
+    )
+
+    runtime.display_light_name = (
+        response.light_name
+    )
+
+    remaining = (
+        event_override
+        .remaining_interactions
+    )
+
+    runtime.display_special_text = (
+        "PIPES // "
+        f"#{pipe.pipe_id} "
+        f"{pipe.material.upper()} // "
+        f"{remaining} REMAINING"
+    )
+
+    prefix = (
+        "SPECIAL PIPES MODE"
+        if pipe_activated
+        else "PIPES OVERRIDE"
+    )
+
+    return (
+        f"{prefix} -> "
+        f"PIPE #{pipe.pipe_id} "
+        f"{pipe.material.upper()} "
+        f"L={pipe.length_m:.2f}m "
+        f"e={pipe.restitution:.2f} "
+        f"impacts={pipe.impact_count} "
+        f"({remaining} remaining)"
     )
 
 
@@ -1036,48 +1158,6 @@ def build_ordinary_plan(
             f"{response.note} -> "
             f"{response.light_name.upper()}"
         ),
-    )
-
-
-def choose_playback_plan(
-    *,
-    distance_mm: int,
-    args: argparse.Namespace,
-    mode: ResponseMode,
-    event_director: SpecialEventDirector,
-    event_override: TemporaryEventOverride,
-    note_clips: dict[
-        str,
-        AudioClip,
-    ],
-    special_clips: dict[
-        str,
-        AudioClip,
-    ],
-) -> PlaybackPlan:
-    """Choose an ordinary or special one-shot response."""
-
-    (
-        special_name,
-        pipe_activated,
-    ) = choose_special_event(
-        event_director=event_director,
-        event_override=event_override,
-        pipe_triggers=args.pipe_triggers,
-    )
-
-    if special_name is not None:
-        return build_special_plan(
-            special_name=special_name,
-            pipe_activated=pipe_activated,
-            event_override=event_override,
-            special_clips=special_clips,
-        )
-
-    return build_ordinary_plan(
-        distance_mm=distance_mm,
-        mode=mode,
-        note_clips=note_clips,
     )
 
 
@@ -1167,6 +1247,7 @@ def handle_trigger(
         str,
         AudioClip,
     ],
+    pipes: PipeSystem | None,
     channels: dict[
         str,
         LightingChannel,
@@ -1193,17 +1274,43 @@ def handle_trigger(
 
         return None
 
-    plan = (
-        choose_playback_plan(
+    (
+        special_name,
+        pipe_activated,
+    ) = choose_special_event(
+        event_director=event_director,
+        event_override=event_override,
+        pipe_triggers=args.pipe_triggers,
+    )
+
+    if special_name == PIPE_EVENT_NAME:
+        if pipes is None:
+            raise RuntimeError(
+                "Pipe special selected without an initialized PipeSystem."
+            )
+
+        return start_pipe_response(
             distance_mm=distance_mm,
-            args=args,
             mode=mode,
-            event_director=event_director,
+            pipe_activated=pipe_activated,
             event_override=event_override,
-            note_clips=note_clips,
+            pipes=pipes,
+            channels=channels,
+            runtime=runtime,
+        )
+
+    if special_name is not None:
+        plan = build_special_plan(
+            special_name=special_name,
             special_clips=special_clips,
         )
-    )
+
+    else:
+        plan = build_ordinary_plan(
+            distance_mm=distance_mm,
+            mode=mode,
+            note_clips=note_clips,
+        )
 
     start_playback(
         plan,
@@ -1348,6 +1455,7 @@ def handle_instrument_entry(
     ],
     keyboard: DistanceKeyboard | None,
     piano: PianoEngine,
+    pipes: PipeSystem | None,
     channels: dict[
         str,
         LightingChannel,
@@ -1390,12 +1498,26 @@ def handle_instrument_entry(
         pipe_triggers=args.pipe_triggers,
     )
 
+    if special_name == PIPE_EVENT_NAME:
+        if pipes is None:
+            raise RuntimeError(
+                "Pipe special selected without an initialized PipeSystem."
+            )
+
+        return start_pipe_response(
+            distance_mm=distance_mm,
+            mode=mode,
+            pipe_activated=pipe_activated,
+            event_override=event_override,
+            pipes=pipes,
+            channels=channels,
+            runtime=runtime,
+        )
+
     if special_name is not None:
         plan = (
             build_special_plan(
                 special_name=special_name,
-                pipe_activated=pipe_activated,
-                event_override=event_override,
                 special_clips=special_clips,
             )
         )
@@ -1586,6 +1708,7 @@ def handle_distance_instrument_sample(
     ],
     keyboard: DistanceKeyboard,
     piano: PianoEngine,
+    pipes: PipeSystem | None,
     channels: dict[
         str,
         LightingChannel,
@@ -1673,6 +1796,7 @@ def handle_distance_instrument_sample(
                 special_clips=special_clips,
                 keyboard=keyboard,
                 piano=piano,
+                pipes=pipes,
                 channels=channels,
                 runtime=runtime,
             )
@@ -1710,6 +1834,7 @@ def handle_presence_instrument_event(
         AudioClip,
     ],
     piano: PianoEngine,
+    pipes: PipeSystem | None,
     channels: dict[
         str,
         LightingChannel,
@@ -1733,6 +1858,7 @@ def handle_presence_instrument_event(
                 special_clips=special_clips,
                 keyboard=None,
                 piano=piano,
+                pipes=pipes,
                 channels=channels,
                 runtime=runtime,
             )
@@ -1800,11 +1926,23 @@ def piano_audio_active(
     )
 
 
+def pipe_audio_active(
+    pipes: PipeSystem | None,
+) -> bool:
+    """Return whether one or more procedural pipe simulations are active."""
+
+    return (
+        pipes is not None
+        and pipes.active_count > 0
+    )
+
+
 def clear_expired_display_response(
     runtime: RuntimeState,
     *,
     audio: AudioSystem,
     piano: PianoEngine | None,
+    pipes: PipeSystem | None,
     now: float,
 ) -> None:
     """Return the presentation to idle after a completed response."""
@@ -1827,6 +1965,11 @@ def clear_expired_display_response(
     ):
         return
 
+    if pipe_audio_active(
+        pipes
+    ):
+        return
+
     if runtime.active_channel is not None:
         return
 
@@ -1841,6 +1984,7 @@ def build_display_state(
     runtime: RuntimeState,
     audio: AudioSystem,
     piano: PianoEngine | None,
+    pipes: PipeSystem | None,
     distance_mm: int | None,
     now: float,
 ) -> DisplayState:
@@ -1850,6 +1994,7 @@ def build_display_state(
         runtime,
         audio=audio,
         piano=piano,
+        pipes=pipes,
         now=now,
     )
 
@@ -1904,6 +2049,9 @@ def build_display_state(
             or piano_audio_active(
                 piano
             )
+            or pipe_audio_active(
+                pipes
+            )
         ),
         code_stage=(
             display_code_stage(
@@ -1953,6 +2101,7 @@ def publish_display_state(
     runtime: RuntimeState,
     audio: AudioSystem,
     piano: PianoEngine | None,
+    pipes: PipeSystem | None,
     distance_mm: int | None,
     now: float,
 ) -> DisplayProcess | None:
@@ -1967,6 +2116,7 @@ def publish_display_state(
             runtime=runtime,
             audio=audio,
             piano=piano,
+            pipes=pipes,
             distance_mm=distance_mm,
             now=now,
         )
@@ -2006,7 +2156,7 @@ def publish_display_state(
 
 
 # ---------------------------------------------------------------------------
-# Sensor timing
+# Sensor / cooperative scheduler timing
 # ---------------------------------------------------------------------------
 
 def advance_sample_schedule(
@@ -2034,6 +2184,52 @@ def advance_sample_schedule(
         )
 
     return next_sample
+
+
+def service_pipe_system(
+    pipes: PipeSystem | None,
+    *,
+    now: float,
+) -> None:
+    """Advance procedural pipe physics without blocking the hardware loop."""
+
+    if pipes is None:
+        return
+
+    pipes.update(
+        now=now
+    )
+
+
+def sleep_until_next_work(
+    *,
+    next_sample: float,
+    pipes: PipeSystem | None,
+) -> None:
+    """Sleep until sensor work or an active pipe needs another scheduler tick."""
+
+    now = (
+        time.monotonic()
+    )
+
+    sleep_seconds = max(
+        0.0,
+        next_sample - now,
+    )
+
+    if (
+        pipes is not None
+        and pipes.active_count > 0
+    ):
+        sleep_seconds = min(
+            sleep_seconds,
+            1.0 / PIPE_UPDATE_HZ,
+        )
+
+    if sleep_seconds > 0:
+        time.sleep(
+            sleep_seconds
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -2088,9 +2284,7 @@ def run_demo(
     event_director = (
         SpecialEventDirector(
             every_n_interactions=args.special_every,
-            event_names=tuple(
-                SPECIAL_SEQUENCES
-            ),
+            event_names=SPECIAL_EVENT_NAMES,
         )
     )
 
@@ -2112,12 +2306,38 @@ def run_demo(
         LightingSystem() as lights,
         AudioSystem() as audio,
     ):
+        synth = None
         piano = None
+        pipes = None
 
         try:
+            #
+            # Instrument articulation always needs FluidSynth. One-shot mode
+            # only needs it when special events are enabled because pipes are
+            # one of the possible specials.
+            #
+            needs_synth = (
+                args.articulation == "instrument"
+                or args.special_every > 0
+            )
+
+            if needs_synth:
+                synth = FluidSynthEngine(
+                    gain=args.piano_gain
+                )
+
+                pipes = PipeSystem(
+                    synth
+                )
+
             if args.articulation == "instrument":
+                if synth is None:
+                    raise RuntimeError(
+                        "Instrument mode requires FluidSynth."
+                    )
+
                 piano = PianoEngine(
-                    gain=args.piano_gain,
+                    synth=synth,
                     velocity=args.piano_velocity,
                 )
 
@@ -2139,6 +2359,17 @@ def run_demo(
             print(
                 "Hardware initialized successfully."
             )
+
+            if synth is not None:
+                print(
+                    "Shared FluidSynth initialized."
+                )
+
+            if pipes is not None:
+                print(
+                    "Procedural pipes ready: "
+                    f"{pipes.maximum_pipes} simultaneous channels."
+                )
 
             print(
                 "Ready."
@@ -2162,36 +2393,47 @@ def run_demo(
 
             try:
                 while not should_stop():
-                    # 1. Wait for the next sensor poll.
+                    #
+                    # Service active pipes independently of the 30 Hz sensor
+                    # poll. This preserves the 24-38 ms contact pulses and
+                    # shrinking impact intervals without hammering I2C faster.
+                    #
                     now = (
                         time.monotonic()
                     )
 
+                    service_pipe_system(
+                        pipes,
+                        now=now,
+                    )
+
                     if now < next_sample:
-                        time.sleep(
-                            next_sample
-                            - now
+                        sleep_until_next_work(
+                            next_sample=next_sample,
+                            pipes=pipes,
                         )
+
+                        continue
 
                     sample_time = (
                         time.monotonic()
                     )
 
-                    # 2. Advance lighting already in progress.
+                    # 1. Advance lighting already in progress.
                     update_lighting(
                         runtime,
                         channels=channels,
                         now=sample_time,
                     )
 
-                    # 3. Read the distance sensor.
+                    # 2. Read the distance sensor.
                     distance_mm = (
                         sensor.distance_mm
                     )
 
                     message = None
 
-                    # 4. Interpret a valid distance sample.
+                    # 3. Interpret a valid distance sample.
                     if distance_mm is None:
                         if (
                             args.verbose
@@ -2226,6 +2468,7 @@ def run_demo(
                                     audio=audio,
                                     note_clips=note_clips,
                                     special_clips=special_clips,
+                                    pipes=pipes,
                                     channels=channels,
                                     runtime=runtime,
                                 )
@@ -2252,6 +2495,7 @@ def run_demo(
                                 special_clips=special_clips,
                                 keyboard=keyboard,
                                 piano=piano,
+                                pipes=pipes,
                                 channels=channels,
                                 runtime=runtime,
                             )
@@ -2288,6 +2532,7 @@ def run_demo(
                                     audio=audio,
                                     special_clips=special_clips,
                                     piano=piano,
+                                    pipes=pipes,
                                     channels=channels,
                                     runtime=runtime,
                                 )
@@ -2302,7 +2547,7 @@ def run_demo(
                             message
                         )
 
-                    # 5. Publish presentation state.
+                    # 4. Publish presentation state.
                     display_process = (
                         publish_display_state(
                             display_process,
@@ -2310,12 +2555,13 @@ def run_demo(
                             runtime=runtime,
                             audio=audio,
                             piano=piano,
+                            pipes=pipes,
                             distance_mm=distance_mm,
                             now=sample_time,
                         )
                     )
 
-                    # 6. Schedule the next sensor poll.
+                    # 5. Schedule the next sensor poll.
                     next_sample = (
                         advance_sample_schedule(
                             next_sample=next_sample,
@@ -2328,8 +2574,21 @@ def run_demo(
                     display_process.close()
 
         finally:
+            #
+            # PipeSystem and PianoEngine share synth. Stop clients first,
+            # then terminate the common FluidSynth process exactly once.
+            #
+            if pipes is not None:
+                try:
+                    pipes.stop_all()
+                except RuntimeError:
+                    pass
+
             if piano is not None:
                 piano.close()
+
+            if synth is not None:
+                synth.close()
 
 
 # ---------------------------------------------------------------------------
