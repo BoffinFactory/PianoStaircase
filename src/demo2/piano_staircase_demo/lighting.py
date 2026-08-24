@@ -6,9 +6,9 @@ runtime policy needed to switch or schedule those channels.
 
 Channel assignments:
 
-    Green  -> GPIO17 / physical pin 11
+    Green  -> GPIO22 / physical pin 15
     Yellow -> GPIO27 / physical pin 13
-    Blue   -> GPIO22 / physical pin 15
+    Blue   -> GPIO17 / physical pin 11
 """
 
 from __future__ import annotations
@@ -101,9 +101,9 @@ class LightingSystem:
     """The three lighting channels used by Demo 2."""
 
     def __init__(self) -> None:
-        self.green = LightingChannel("GREEN", board.D17)
+        self.green = LightingChannel("GREEN", board.D22)
         self.yellow = LightingChannel("YELLOW", board.D27)
-        self.blue = LightingChannel("BLUE", board.D22)
+        self.blue = LightingChannel("BLUE", board.D17)
         self.channels = (
             self.green,
             self.yellow,
