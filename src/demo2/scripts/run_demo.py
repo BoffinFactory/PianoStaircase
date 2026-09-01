@@ -19,7 +19,7 @@ Deliberate rapid back-and-forth zone movement unlocks Pipe Physics Mode:
 
     repeated direction reversals
         -> procedural falling Tubular Bell pipes
-        -> LEDs continue tracking the visitor's hand
+        -> LEDs animate a top-to-bottom fall and damped bounce
         -> normal Vibraphone strikes are temporarily suppressed
         -> idle timeout returns to normal zone behavior
 
@@ -57,6 +57,7 @@ from piano_staircase_demo.instrument import (
     handle_distance_instrument_sample,
     handle_presence_instrument_event,
     handle_zone_instrument_sample,
+    restore_zone_lights_after_pipe_mode,
     service_zone_note_release,
 )
 from piano_staircase_demo.interaction import CooldownGate, RapidPlayDetector
@@ -225,7 +226,15 @@ def run_demo(
                     now = time.monotonic()
 
                     if rapid_play is not None:
-                        rapid_play.service(now=now)
+                        pipe_mode_expired = rapid_play.service(now=now)
+
+                        if pipe_mode_expired and zone_tracker is not None:
+                            restore_zone_lights_after_pipe_mode(
+                                current_zone=zone_tracker.current_zone,
+                                channels=channels,
+                                runtime=runtime,
+                                now=now,
+                            )
 
                     service_pipe_system(pipes, now=now)
 

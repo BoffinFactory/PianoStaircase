@@ -26,7 +26,7 @@ from piano_staircase_demo.lighting import (
 from piano_staircase_demo.piano import PianoEngine
 from piano_staircase_demo.pipes import PipeSystem
 from piano_staircase_demo.presence import PresenceEvent
-from piano_staircase_demo.runtime import RuntimeState
+from piano_staircase_demo.runtime import LightCue, RuntimeState
 from piano_staircase_demo.specials import (
     choose_special_event,
     start_pipe_response,
@@ -479,6 +479,99 @@ def start_zone_response(
     return f"{notes} -> {lights} (ZONE)"
 
 
+def build_pipe_fall_light_cues(
+    *,
+    start_time: float,
+) -> tuple[LightCue, ...]:
+    """Build a top-to-bottom falling/bouncing staircase animation.
+
+    The three physical rails are used as a coarse vertical visualization:
+    BLUE is the top step, YELLOW is the middle, and GREEN is the bottom.
+    The first rebound reaches the top again; later rebounds get progressively
+    smaller so the animation reads as a damped bounce rather than a loop.
+    """
+
+    # (light, duration, dark gap after the light)
+    pattern = (
+        ("blue",   0.12, 0.00),
+        ("yellow", 0.12, 0.00),
+        ("green",  0.16, 0.04),  # first floor impact
+        ("yellow", 0.10, 0.00),
+        ("blue",   0.08, 0.00),  # largest rebound apex
+        ("yellow", 0.10, 0.00),
+        ("green",  0.14, 0.05),  # second floor impact
+        ("yellow", 0.08, 0.00),
+        ("green",  0.12, 0.06),  # smaller rebound
+        ("yellow", 0.06, 0.00),
+        ("green",  0.10, 0.00),  # final small impact
+    )
+
+    cues: list[LightCue] = []
+    cue_start = start_time
+
+    for light_name, duration, gap in pattern:
+        cue_end = cue_start + duration
+        cues.append(
+            LightCue(
+                light_name=light_name,
+                start_time=cue_start,
+                end_time=cue_end,
+            )
+        )
+        cue_start = cue_end + gap
+
+    return tuple(cues)
+
+
+def restore_zone_lights_after_pipe_mode(
+    *,
+    current_zone: int | None,
+    channels: dict[str, LightingChannel],
+    runtime: RuntimeState,
+    now: float,
+) -> None:
+    """Return lighting to the current normal zone after Pipe Mode expires."""
+
+    runtime.light_cues = ()
+    runtime.held_light_name = None
+    runtime.display_note = None
+
+    if current_zone is None:
+        runtime.instrument_engaged = False
+        runtime.held_light_names = ()
+        runtime.display_light_name = None
+    else:
+        response = ZONE_RESPONSES[current_zone]
+        runtime.instrument_engaged = True
+        runtime.held_light_names = response.light_names
+        runtime.display_light_name = "+".join(response.light_names)
+
+    update_lighting(runtime, channels=channels, now=now)
+
+
+def leave_zone_during_pipe_mode(
+    *,
+    piano: PianoEngine,
+    channels: dict[str, LightingChannel],
+    runtime: RuntimeState,
+    now: float,
+) -> str:
+    """Leave sensor range while allowing the current pipe animation to finish."""
+
+    release_zone_notes(piano=piano, runtime=runtime)
+    runtime.instrument_note = None
+    runtime.instrument_engaged = False
+    runtime.held_light_name = None
+    runtime.held_light_names = ()
+    runtime.display_note = None
+    runtime.last_response_time = now
+
+    # Do not clear runtime.light_cues here. They visualize the falling pipe,
+    # not the visitor's current sensor zone.
+    update_lighting(runtime, channels=channels, now=now)
+    return "PIPE PHYSICS MODE -> SENSOR EXIT (ANIMATION CONTINUES)"
+
+
 def start_pipe_zone_response(
     *,
     response_index: int,
@@ -496,9 +589,10 @@ def start_pipe_zone_response(
     """
     Handle one accepted zone transition while Pipe Physics Mode is active.
 
-    Normal Vibraphone strikes are suppressed, but the physical staircase LEDs
-    continue to follow the visitor's hand. Unlocking starts one pipe
-    immediately; subsequent direction reversals may launch additional pipes.
+    Normal Vibraphone strikes are suppressed. Each successfully launched pipe
+    takes over the staircase LEDs with a top-to-bottom fall and damped-bounce
+    animation. Unlocking starts one pipe immediately; subsequent direction
+    reversals may launch additional pipes.
     """
 
     # Do not leave a normal Vibraphone chord held when the interaction crosses
@@ -508,13 +602,15 @@ def start_pipe_zone_response(
         runtime=runtime,
     )
 
-    hold_zone_lights(
-        response_index=response_index,
-        channels=channels,
-        runtime=runtime,
-        now=now,
-        is_entry=is_entry,
-    )
+    # Pipe Mode lighting visualizes the simulated falling object instead of
+    # mirroring sensor distance. A newly spawned pipe replaces the previous
+    # visual sequence; between spawns, the current animation continues.
+    runtime.instrument_engaged = True
+    runtime.held_light_name = None
+    runtime.held_light_names = ()
+
+    if is_entry:
+        runtime.last_interaction_time = now
 
     # The dedicated Pipe Physics display owns the audio presentation while the
     # mode is active. Avoid leaving a stale normal-zone note label underneath.
@@ -541,6 +637,11 @@ def start_pipe_zone_response(
                 f"{pipes.maximum_pipes} PIPE CHANNELS BUSY"
             )
         return None
+
+    runtime.light_cues = build_pipe_fall_light_cues(start_time=now)
+    runtime.display_light_name = "blue"
+    runtime.last_response_time = now
+    update_lighting(runtime, channels=channels, now=now)
 
     if activated:
         runtime.last_interaction_time = now
@@ -601,6 +702,14 @@ def handle_zone_instrument_sample(
         )
 
     if transition.current_zone is None:
+        if rapid_play is not None and rapid_play.active:
+            return leave_zone_during_pipe_mode(
+                piano=piano,
+                channels=channels,
+                runtime=runtime,
+                now=now,
+            )
+
         return finish_zone_interaction(
             piano=piano,
             channels=channels,

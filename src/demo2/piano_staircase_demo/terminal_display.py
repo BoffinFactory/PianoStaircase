@@ -747,6 +747,9 @@ class TerminalDisplay:
             Align.center(
                 Text("Each direction reversal can drop another pipe.", style="white")
             ),
+            Align.center(
+                Text("LEDs: TOP → MIDDLE → BOTTOM → BOUNCE", style="bright_cyan")
+            ),
             Text(""),
             Align.center(
                 Text("MODE ENDS WITHOUT MOVEMENT IN", style="dim")

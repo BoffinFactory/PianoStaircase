@@ -96,7 +96,7 @@ PIPE_GESTURE_WINDOW_SECONDS = 3.0
 PIPE_GESTURE_MOVEMENTS = 5
 PIPE_GESTURE_REVERSALS = 3
 PIPE_IDLE_TIMEOUT_SECONDS = 5.0
-PIPE_SPAWN_COOLDOWN_SECONDS = 0.5
+PIPE_SPAWN_COOLDOWN_SECONDS = 0.0
 
 # The older every-N-interactions special-event path remains available only for
 # explicit legacy development modes. Normal zones mode uses rapid play above.
@@ -362,7 +362,7 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=PIPE_SPAWN_COOLDOWN_SECONDS,
         help=(
-            "Minimum time between newly launched pipes "
+            "Minimum time between newly launched pipes; 0 disables the cooldown "
             f"(default: {PIPE_SPAWN_COOLDOWN_SECONDS:g} seconds)."
         ),
     )
