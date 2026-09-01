@@ -622,7 +622,7 @@ class TerminalDisplay:
             content = Align.center(
                 Text(
                     "No pipe is falling right now.\n\n"
-                    "Reverse direction to launch another.",
+                    "Cross into another zone to launch one.",
                     style="bold bright_white",
                     justify="center",
                 ),
@@ -699,7 +699,7 @@ class TerminalDisplay:
         table.add_row("PIPE", "MATERIAL", "IMPACT")
 
         if not state.pipe_snapshots:
-            table.add_row("—", "waiting for reversal", "—")
+            table.add_row("—", "waiting for zone change", "—")
         else:
             for pipe in state.pipe_snapshots:
                 table.add_row(
@@ -745,7 +745,7 @@ class TerminalDisplay:
                 Text("KEEP MOVING YOUR HAND", style="bold bright_white")
             ),
             Align.center(
-                Text("Each direction reversal can drop another pipe.", style="white")
+                Text("Every zone change can drop another pipe.", style="white")
             ),
             Align.center(
                 Text("LEDs: TOP → MIDDLE → BOTTOM → BOUNCE", style="bright_cyan")

@@ -584,15 +584,14 @@ def start_pipe_zone_response(
     now: float,
     is_entry: bool,
     activated: bool,
-    reversal: bool,
 ) -> str | None:
     """
     Handle one accepted zone transition while Pipe Physics Mode is active.
 
     Normal Vibraphone strikes are suppressed. Each successfully launched pipe
     takes over the staircase LEDs with a top-to-bottom fall and damped-bounce
-    animation. Unlocking starts one pipe immediately; subsequent direction
-    reversals may launch additional pipes.
+    animation. Unlocking starts one pipe immediately; after that, every
+    accepted in-range zone transition attempts to launch another pipe.
     """
 
     # Do not leave a normal Vibraphone chord held when the interaction crosses
@@ -616,16 +615,17 @@ def start_pipe_zone_response(
     # mode is active. Avoid leaving a stale normal-zone note label underneath.
     runtime.display_note = None
 
-    should_spawn = activated or reversal
-
-    if not should_spawn:
-        if args.verbose:
-            return "PIPE PHYSICS MODE -> TRACKING"
-        return None
+    # Every accepted in-range zone change owns the falling/bounce visual,
+    # even if all six pipe MIDI channels are temporarily occupied. This keeps
+    # Pipe Mode lighting independent of the visitor's distance-zone lights.
+    runtime.light_cues = build_pipe_fall_light_cues(start_time=now)
+    runtime.display_light_name = "blue"
+    runtime.last_response_time = now
+    update_lighting(runtime, channels=channels, now=now)
 
     if not rapid_play.allow_pipe_spawn(now=now):
         if args.verbose:
-            return "PIPE PHYSICS MODE -> REVERSAL (SPAWN COOLDOWN)"
+            return "PIPE ZONE CHANGE -> SPAWN COOLDOWN"
         return None
 
     snapshot = pipes.start_pipe(now=now)
@@ -633,21 +633,16 @@ def start_pipe_zone_response(
     if snapshot is None:
         if args.verbose:
             return (
-                "PIPE PHYSICS MODE -> ALL "
+                "PIPE ZONE CHANGE -> DROP VISUAL ONLY; ALL "
                 f"{pipes.maximum_pipes} PIPE CHANNELS BUSY"
             )
         return None
-
-    runtime.light_cues = build_pipe_fall_light_cues(start_time=now)
-    runtime.display_light_name = "blue"
-    runtime.last_response_time = now
-    update_lighting(runtime, channels=channels, now=now)
 
     if activated:
         runtime.last_interaction_time = now
         return f"PIPE PHYSICS MODE UNLOCKED -> PIPE #{snapshot.pipe_id}"
 
-    return f"PIPE REVERSAL -> PIPE #{snapshot.pipe_id}"
+    return f"PIPE ZONE CHANGE -> PIPE #{snapshot.pipe_id}"
 
 
 def finish_zone_interaction(
@@ -735,7 +730,6 @@ def handle_zone_instrument_sample(
             now=now,
             is_entry=transition.previous_zone is None,
             activated=rapid_update.activated,
-            reversal=rapid_update.reversal,
         )
 
     return start_zone_response(

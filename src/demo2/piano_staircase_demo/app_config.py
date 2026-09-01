@@ -88,9 +88,9 @@ ZONE_NOTE_HOLD_SECONDS = 0.8
 # General MIDI bank 0, program 11 = Vibraphone.
 ZONE_PROGRAM = 11
 
-# Deliberate rapid back-and-forth play unlocks Pipe Physics Mode. These values
-# are command-line adjustable so the final exhibit can be tuned on real
-# hardware without another source edit.
+# Deliberate rapid back-and-forth play unlocks Pipe Physics Mode. Once active,
+# every accepted in-range zone transition attempts to launch another pipe.
+# These values remain command-line adjustable for physical tuning.
 PIPE_MODE_ENABLED = True
 PIPE_GESTURE_WINDOW_SECONDS = 3.0
 PIPE_GESTURE_MOVEMENTS = 5
@@ -634,7 +634,7 @@ def print_startup_summary(args: argparse.Namespace) -> None:
                     f"{args.pipe_window:g} s"
                 )
                 print(
-                    "Pipe activity:  new pipe on unlock/reversal, "
+                    "Pipe activity:  new pipe on every zone change, "
                     f">={args.pipe_spawn_cooldown:g} s apart"
                 )
                 print(
