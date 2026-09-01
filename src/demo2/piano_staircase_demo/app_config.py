@@ -88,9 +88,18 @@ ZONE_NOTE_HOLD_SECONDS = 0.8
 # General MIDI bank 0, program 11 = Vibraphone.
 ZONE_PROGRAM = 11
 
-# Normal operation still has no periodic specials. The procedural pipe engine
-# remains available for development and will be connected to deliberate rapid
-# play separately rather than to an every-N-interactions counter.
+# Deliberate rapid back-and-forth play unlocks Pipe Physics Mode. These values
+# are command-line adjustable so the final exhibit can be tuned on real
+# hardware without another source edit.
+PIPE_MODE_ENABLED = True
+PIPE_GESTURE_WINDOW_SECONDS = 3.0
+PIPE_GESTURE_MOVEMENTS = 5
+PIPE_GESTURE_REVERSALS = 3
+PIPE_IDLE_TIMEOUT_SECONDS = 5.0
+PIPE_SPAWN_COOLDOWN_SECONDS = 0.5
+
+# The older every-N-interactions special-event path remains available only for
+# explicit legacy development modes. Normal zones mode uses rapid play above.
 SPECIAL_EVERY = 0
 PIPE_EVENT_NAME = "pipes"
 PIPE_OVERRIDE_TRIGGERS = 4
@@ -304,6 +313,60 @@ def parse_args() -> argparse.Namespace:
         ),
     )
 
+    # Discoverable rapid-play Pipe Physics Mode.
+    parser.add_argument(
+        "--no-pipe-mode",
+        dest="pipe_mode",
+        action="store_false",
+        default=PIPE_MODE_ENABLED,
+        help="Disable rapid-play Pipe Physics Mode in normal zones mode.",
+    )
+    parser.add_argument(
+        "--pipe-window",
+        type=float,
+        default=PIPE_GESTURE_WINDOW_SECONDS,
+        help=(
+            "Rolling time window for the rapid-play unlock "
+            f"(default: {PIPE_GESTURE_WINDOW_SECONDS:g} seconds)."
+        ),
+    )
+    parser.add_argument(
+        "--pipe-moves",
+        type=int,
+        default=PIPE_GESTURE_MOVEMENTS,
+        help=(
+            "Stable in-range zone movements required to unlock Pipe Mode "
+            f"(default: {PIPE_GESTURE_MOVEMENTS})."
+        ),
+    )
+    parser.add_argument(
+        "--pipe-reversals",
+        type=int,
+        default=PIPE_GESTURE_REVERSALS,
+        help=(
+            "Direction reversals required inside the unlock window "
+            f"(default: {PIPE_GESTURE_REVERSALS})."
+        ),
+    )
+    parser.add_argument(
+        "--pipe-idle-timeout",
+        type=float,
+        default=PIPE_IDLE_TIMEOUT_SECONDS,
+        help=(
+            "Seconds without an accepted zone transition before Pipe Mode exits "
+            f"(default: {PIPE_IDLE_TIMEOUT_SECONDS:g})."
+        ),
+    )
+    parser.add_argument(
+        "--pipe-spawn-cooldown",
+        type=float,
+        default=PIPE_SPAWN_COOLDOWN_SECONDS,
+        help=(
+            "Minimum time between newly launched pipes "
+            f"(default: {PIPE_SPAWN_COOLDOWN_SECONDS:g} seconds)."
+        ),
+    )
+
     # Full chromatic distance-piano alternate mode.
     parser.add_argument(
         "--keyboard-near-mm",
@@ -443,6 +506,18 @@ def validate_args(args: argparse.Namespace) -> None:
         raise SystemExit("--piano-velocity must be between 1 and 127.")
     if args.zone_note_hold <= 0:
         raise SystemExit("--zone-note-hold must be greater than zero.")
+    if args.pipe_window <= 0:
+        raise SystemExit("--pipe-window must be greater than zero.")
+    if args.pipe_moves < 2:
+        raise SystemExit("--pipe-moves must be at least 2.")
+    if args.pipe_reversals < 1:
+        raise SystemExit("--pipe-reversals must be at least 1.")
+    if args.pipe_reversals >= args.pipe_moves:
+        raise SystemExit("--pipe-reversals must be less than --pipe-moves.")
+    if args.pipe_idle_timeout <= 0:
+        raise SystemExit("--pipe-idle-timeout must be greater than zero.")
+    if args.pipe_spawn_cooldown < 0:
+        raise SystemExit("--pipe-spawn-cooldown cannot be negative.")
 
     if args.response_mode == "zones" and args.articulation != "instrument":
         raise SystemExit(
@@ -550,6 +625,25 @@ def print_startup_summary(args: argparse.Namespace) -> None:
                 )
                 print(f"  {notes:<9} -> {lights}")
 
+            if args.pipe_mode:
+                print("Pipe Physics:   rapid-play unlock enabled")
+                print(
+                    "Pipe unlock:    "
+                    f"{args.pipe_moves} moves + "
+                    f"{args.pipe_reversals} reversals / "
+                    f"{args.pipe_window:g} s"
+                )
+                print(
+                    "Pipe activity:  new pipe on unlock/reversal, "
+                    f">={args.pipe_spawn_cooldown:g} s apart"
+                )
+                print(
+                    "Pipe exit:      "
+                    f"{args.pipe_idle_timeout:g} s without movement"
+                )
+            else:
+                print("Pipe Physics:   disabled")
+
         elif args.response_mode == "distance":
             keyboard = create_distance_keyboard(args)
             sizing_text = "AUTO" if keyboard.auto_sized else "MANUAL"
@@ -573,7 +667,7 @@ def print_startup_summary(args: argparse.Namespace) -> None:
             )
 
     print(
-        "Special events: "
+        "Legacy specials: "
         + (
             f"every {args.special_every} accepted interactions"
             if args.special_every > 0

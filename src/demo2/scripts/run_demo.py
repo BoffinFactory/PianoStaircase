@@ -10,10 +10,18 @@ package modules.
 
 Normal unattended behavior:
 
-    three broad distance zones
+    five nonlinear distance zones
         -> stable hysteretic transition
-        -> Vibraphone C4 / E4 / G4 strike
-        -> matching GREEN / YELLOW / BLUE light held while occupied
+        -> Vibraphone C4 / C4+E4 / E4 / E4+G4 / G4 strike
+        -> matching GREEN / GREEN+YELLOW / YELLOW / YELLOW+BLUE / BLUE lights
+
+Deliberate rapid back-and-forth zone movement unlocks Pipe Physics Mode:
+
+    repeated direction reversals
+        -> procedural falling Tubular Bell pipes
+        -> LEDs continue tracking the visitor's hand
+        -> normal Vibraphone strikes are temporarily suppressed
+        -> idle timeout returns to normal zone behavior
 
 The full 88-key distance piano remains available with:
 
@@ -51,7 +59,7 @@ from piano_staircase_demo.instrument import (
     handle_zone_instrument_sample,
     service_zone_note_release,
 )
-from piano_staircase_demo.interaction import CooldownGate
+from piano_staircase_demo.interaction import CooldownGate, RapidPlayDetector
 from piano_staircase_demo.lighting import LightingSystem, update_lighting
 from piano_staircase_demo.one_shot import create_note_clips, handle_trigger
 from piano_staircase_demo.piano import PIANO_PROGRAM, PianoEngine
@@ -103,6 +111,21 @@ def run_demo(
             exit_samples=args.rearm_samples,
         )
 
+    rapid_play = None
+
+    if (
+        args.articulation == "instrument"
+        and args.response_mode == "zones"
+        and args.pipe_mode
+    ):
+        rapid_play = RapidPlayDetector(
+            window_seconds=args.pipe_window,
+            required_movements=args.pipe_moves,
+            required_reversals=args.pipe_reversals,
+            idle_timeout_seconds=args.pipe_idle_timeout,
+            pipe_spawn_cooldown_seconds=args.pipe_spawn_cooldown,
+        )
+
     gate = CooldownGate(args.cooldown)
     mode = create_response_mode(args)
     event_director = SpecialEventDirector(
@@ -131,13 +154,13 @@ def run_demo(
             if needs_synth:
                 synth = FluidSynthEngine(gain=args.piano_gain)
 
-            # Pipes are intentionally not part of normal operation. Keep the
-            # development machinery available only when periodic specials are
-            # explicitly enabled in a legacy response mode.
-            if args.special_every > 0:
+            # Normal zones mode now owns a discoverable Pipe Physics path.
+            # Legacy periodic specials may also still request PipeSystem in
+            # explicit development modes.
+            if rapid_play is not None or args.special_every > 0:
                 if synth is None:
                     raise RuntimeError(
-                        "Pipe development mode requires FluidSynth."
+                        "Procedural pipes require FluidSynth."
                     )
                 pipes = PipeSystem(synth)
 
@@ -177,9 +200,14 @@ def run_demo(
             if synth is not None:
                 print("Shared FluidSynth initialized.")
 
-            if pipes is not None:
+            if rapid_play is not None and pipes is not None:
                 print(
-                    "Procedural pipes ready for development: "
+                    "Pipe Physics Mode ready: "
+                    f"up to {pipes.maximum_pipes} simultaneous pipes."
+                )
+            elif pipes is not None:
+                print(
+                    "Procedural pipes ready for legacy development: "
                     f"{pipes.maximum_pipes} simultaneous channels."
                 )
 
@@ -192,10 +220,13 @@ def run_demo(
 
             try:
                 while not should_stop():
-                    # Active pipes, when explicitly enabled for development,
-                    # need more frequent cooperative servicing than the 30 Hz
-                    # VL53L0X poll.
+                    # Pipe synthesis needs more frequent cooperative servicing
+                    # than the 30 Hz VL53L0X sensor poll.
                     now = time.monotonic()
+
+                    if rapid_play is not None:
+                        rapid_play.service(now=now)
+
                     service_pipe_system(pipes, now=now)
 
                     if now < next_sample:
@@ -264,7 +295,7 @@ def run_demo(
                     elif args.response_mode == "zones":
                         if zone_tracker is None or piano is None:
                             raise RuntimeError(
-                                "Three-zone instrument was not initialized."
+                                "Five-zone instrument was not initialized."
                             )
 
                         message = handle_zone_instrument_sample(
@@ -274,6 +305,8 @@ def run_demo(
                             piano=piano,
                             channels=channels,
                             runtime=runtime,
+                            rapid_play=rapid_play,
+                            pipes=pipes,
                         )
 
                     elif args.response_mode == "distance":
@@ -334,6 +367,7 @@ def run_demo(
                         pipes=pipes,
                         distance_mm=distance_mm,
                         now=sample_time,
+                        rapid_play=rapid_play,
                     )
 
                     # 5. Schedule the next sensor poll without catch-up bursts.

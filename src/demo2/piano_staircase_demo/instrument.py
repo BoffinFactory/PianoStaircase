@@ -18,7 +18,7 @@ from piano_staircase_demo.events import (
     SpecialEventDirector,
     TemporaryEventOverride,
 )
-from piano_staircase_demo.interaction import CooldownGate
+from piano_staircase_demo.interaction import CooldownGate, RapidPlayDetector
 from piano_staircase_demo.lighting import (
     LightingChannel,
     update_lighting,
@@ -369,6 +369,23 @@ def handle_presence_instrument_event(
 # ---------------------------------------------------------------------------
 # Normal five-zone Vibraphone behavior
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Normal five-zone Vibraphone + discoverable Pipe Physics behavior
+# ---------------------------------------------------------------------------
+
+def release_zone_notes(
+    *,
+    piano: PianoEngine,
+    runtime: RuntimeState,
+) -> None:
+    """Release every currently held normal-zone Vibraphone key."""
+
+    for note in runtime.zone_notes:
+        piano.note_off(note)
+
+    runtime.zone_notes = ()
+    runtime.instrument_note_release_time = None
+
 
 def service_zone_note_release(
     *,
@@ -383,11 +400,37 @@ def service_zone_note_release(
     if release_time is None or now < release_time:
         return
 
-    for note in runtime.zone_notes:
-        piano.note_off(note)
+    release_zone_notes(
+        piano=piano,
+        runtime=runtime,
+    )
 
-    runtime.zone_notes = ()
-    runtime.instrument_note_release_time = None
+
+def hold_zone_lights(
+    *,
+    response_index: int,
+    channels: dict[str, LightingChannel],
+    runtime: RuntimeState,
+    now: float,
+    is_entry: bool,
+) -> None:
+    """Track the current physical staircase zone without playing audio."""
+
+    response = ZONE_RESPONSES[response_index]
+
+    runtime.instrument_engaged = True
+    runtime.light_cues = ()
+    runtime.held_light_name = None
+    runtime.held_light_names = response.light_names
+
+    if is_entry:
+        runtime.last_interaction_time = now
+
+    runtime.last_response_time = now
+    runtime.display_light_name = "+".join(response.light_names)
+    runtime.display_special_text = None
+
+    update_lighting(runtime, channels=channels, now=now)
 
 
 def start_zone_response(
@@ -398,44 +441,112 @@ def start_zone_response(
     channels: dict[str, LightingChannel],
     runtime: RuntimeState,
     is_entry: bool,
+    now: float | None = None,
 ) -> str:
     """Strike one five-zone Vibraphone response and hold its light rail(s)."""
 
-    response = ZONE_RESPONSES[response_index]
-    response_time = time.monotonic()
+    if now is None:
+        now = time.monotonic()
 
-    # If a visitor crosses a zone boundary before the previous 800 ms hold
-    # expires, release every key from the previous response normally. The
-    # SoundFont release tails may continue to decay under the new response.
-    for note in runtime.zone_notes:
-        piano.note_off(note)
+    response = ZONE_RESPONSES[response_index]
+
+    # Crossing a boundary before the previous hold expires releases every key
+    # normally. SoundFont release tails may continue underneath the new chord.
+    release_zone_notes(
+        piano=piano,
+        runtime=runtime,
+    )
 
     for note in response.notes:
         piano.note_on(note, velocity=args.piano_velocity)
 
     runtime.instrument_note = None
     runtime.zone_notes = response.notes
-    runtime.instrument_note_release_time = (
-        response_time + args.zone_note_hold
+    runtime.instrument_note_release_time = now + args.zone_note_hold
+
+    hold_zone_lights(
+        response_index=response_index,
+        channels=channels,
+        runtime=runtime,
+        now=now,
+        is_entry=is_entry,
     )
-    runtime.instrument_engaged = True
-    runtime.light_cues = ()
-    runtime.held_light_name = None
-    runtime.held_light_names = response.light_names
 
-    if is_entry:
-        runtime.last_interaction_time = response_time
-
-    runtime.last_response_time = response_time
     runtime.display_note = instrument_notes_label(response.notes)
-    runtime.display_light_name = "+".join(response.light_names)
-    runtime.display_special_text = None
-
-    update_lighting(runtime, channels=channels, now=response_time)
 
     notes = instrument_notes_label(response.notes)
     lights = " + ".join(name.upper() for name in response.light_names)
     return f"{notes} -> {lights} (ZONE)"
+
+
+def start_pipe_zone_response(
+    *,
+    response_index: int,
+    args: argparse.Namespace,
+    piano: PianoEngine,
+    pipes: PipeSystem,
+    rapid_play: RapidPlayDetector,
+    channels: dict[str, LightingChannel],
+    runtime: RuntimeState,
+    now: float,
+    is_entry: bool,
+    activated: bool,
+    reversal: bool,
+) -> str | None:
+    """
+    Handle one accepted zone transition while Pipe Physics Mode is active.
+
+    Normal Vibraphone strikes are suppressed, but the physical staircase LEDs
+    continue to follow the visitor's hand. Unlocking starts one pipe
+    immediately; subsequent direction reversals may launch additional pipes.
+    """
+
+    # Do not leave a normal Vibraphone chord held when the interaction crosses
+    # the transition that unlocks Pipe Physics Mode.
+    release_zone_notes(
+        piano=piano,
+        runtime=runtime,
+    )
+
+    hold_zone_lights(
+        response_index=response_index,
+        channels=channels,
+        runtime=runtime,
+        now=now,
+        is_entry=is_entry,
+    )
+
+    # The dedicated Pipe Physics display owns the audio presentation while the
+    # mode is active. Avoid leaving a stale normal-zone note label underneath.
+    runtime.display_note = None
+
+    should_spawn = activated or reversal
+
+    if not should_spawn:
+        if args.verbose:
+            return "PIPE PHYSICS MODE -> TRACKING"
+        return None
+
+    if not rapid_play.allow_pipe_spawn(now=now):
+        if args.verbose:
+            return "PIPE PHYSICS MODE -> REVERSAL (SPAWN COOLDOWN)"
+        return None
+
+    snapshot = pipes.start_pipe(now=now)
+
+    if snapshot is None:
+        if args.verbose:
+            return (
+                "PIPE PHYSICS MODE -> ALL "
+                f"{pipes.maximum_pipes} PIPE CHANNELS BUSY"
+            )
+        return None
+
+    if activated:
+        runtime.last_interaction_time = now
+        return f"PIPE PHYSICS MODE UNLOCKED -> PIPE #{snapshot.pipe_id}"
+
+    return f"PIPE REVERSAL -> PIPE #{snapshot.pipe_id}"
 
 
 def finish_zone_interaction(
@@ -446,12 +557,12 @@ def finish_zone_interaction(
 ) -> str:
     """Leave the entire zone range and turn all continuous lights off."""
 
-    for note in runtime.zone_notes:
-        piano.note_off(note)
+    release_zone_notes(
+        piano=piano,
+        runtime=runtime,
+    )
 
     runtime.instrument_note = None
-    runtime.zone_notes = ()
-    runtime.instrument_note_release_time = None
     runtime.instrument_engaged = False
     runtime.held_light_name = None
     runtime.held_light_names = ()
@@ -470,6 +581,8 @@ def handle_zone_instrument_sample(
     piano: PianoEngine,
     channels: dict[str, LightingChannel],
     runtime: RuntimeState,
+    rapid_play: RapidPlayDetector | None = None,
+    pipes: PipeSystem | None = None,
 ) -> str | None:
     """Process one valid distance reading for normal five-zone behavior."""
 
@@ -478,11 +591,42 @@ def handle_zone_instrument_sample(
     if transition is None:
         return None
 
+    now = time.monotonic()
+    rapid_update = None
+
+    if rapid_play is not None:
+        rapid_update = rapid_play.observe_transition(
+            transition,
+            now=now,
+        )
+
     if transition.current_zone is None:
         return finish_zone_interaction(
             piano=piano,
             channels=channels,
             runtime=runtime,
+        )
+
+    if rapid_play is not None and rapid_play.active:
+        if pipes is None:
+            raise RuntimeError(
+                "Pipe Physics Mode activated without an initialized PipeSystem."
+            )
+
+        assert rapid_update is not None
+
+        return start_pipe_zone_response(
+            response_index=transition.current_zone,
+            args=args,
+            piano=piano,
+            pipes=pipes,
+            rapid_play=rapid_play,
+            channels=channels,
+            runtime=runtime,
+            now=now,
+            is_entry=transition.previous_zone is None,
+            activated=rapid_update.activated,
+            reversal=rapid_update.reversal,
         )
 
     return start_zone_response(
@@ -492,4 +636,5 @@ def handle_zone_instrument_sample(
         channels=channels,
         runtime=runtime,
         is_entry=transition.previous_zone is None,
+        now=now,
     )

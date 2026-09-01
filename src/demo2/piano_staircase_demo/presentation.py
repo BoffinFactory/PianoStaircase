@@ -6,6 +6,7 @@ import argparse
 
 from piano_staircase_demo.audio import AudioSystem
 from piano_staircase_demo.display_process import DisplayProcess
+from piano_staircase_demo.interaction import RapidPlayDetector
 from piano_staircase_demo.piano import PianoEngine
 from piano_staircase_demo.pipes import PipeSystem
 from piano_staircase_demo.runtime import RuntimeState
@@ -59,9 +60,12 @@ def clear_expired_display_response(
     piano: PianoEngine | None,
     pipes: PipeSystem | None,
     now: float,
+    rapid_play: RapidPlayDetector | None = None,
 ) -> None:
     """Return the presentation to idle after a completed response."""
 
+    if rapid_play is not None and rapid_play.active:
+        return
     if runtime.last_response_time is None:
         return
     if now - runtime.last_response_time < DISPLAY_RESPONSE_HOLD_SECONDS:
@@ -91,6 +95,7 @@ def build_display_state(
     pipes: PipeSystem | None,
     distance_mm: int | None,
     now: float,
+    rapid_play: RapidPlayDetector | None = None,
 ) -> DisplayState:
     """Build one small state snapshot for the presentation process."""
 
@@ -100,9 +105,18 @@ def build_display_state(
         piano=piano,
         pipes=pipes,
         now=now,
+        rapid_play=rapid_play,
     )
 
-    if args.articulation == "instrument":
+    rapid_status = (
+        rapid_play.snapshot(now=now)
+        if rapid_play is not None
+        else None
+    )
+
+    if rapid_status is not None and rapid_status.active:
+        trigger_state = "PIPE"
+    elif args.articulation == "instrument":
         trigger_state = "HELD" if runtime.instrument_engaged else "ARMED"
     else:
         interaction_is_recent = (
@@ -138,6 +152,33 @@ def build_display_state(
             now=now,
         ),
         special_text=runtime.display_special_text,
+        pipe_mode_active=(
+            rapid_status.active
+            if rapid_status is not None
+            else False
+        ),
+        pipe_mode_seconds_remaining=(
+            rapid_status.seconds_remaining
+            if rapid_status is not None
+            else None
+        ),
+        pipe_unlock_moves=(
+            rapid_status.movement_count
+            if rapid_status is not None
+            else 0
+        ),
+        pipe_unlock_move_target=args.pipe_moves,
+        pipe_unlock_reversals=(
+            rapid_status.reversal_count
+            if rapid_status is not None
+            else 0
+        ),
+        pipe_unlock_reversal_target=args.pipe_reversals,
+        pipe_snapshots=(
+            pipes.snapshots(now=now)
+            if pipes is not None
+            else ()
+        ),
     )
 
 
@@ -149,7 +190,11 @@ def start_display_process(args: argparse.Namespace) -> DisplayProcess | None:
 
     try:
         return DisplayProcess.start(
-            initial_state=DisplayState(response_mode=args.response_mode),
+            initial_state=DisplayState(
+                response_mode=args.response_mode,
+                pipe_unlock_move_target=args.pipe_moves,
+                pipe_unlock_reversal_target=args.pipe_reversals,
+            ),
             refresh_hz=DISPLAY_HZ,
         )
     except Exception as exc:
@@ -168,6 +213,7 @@ def publish_display_state(
     pipes: PipeSystem | None,
     distance_mm: int | None,
     now: float,
+    rapid_play: RapidPlayDetector | None = None,
 ) -> DisplayProcess | None:
     """Publish the newest presentation state without blocking."""
 
@@ -182,6 +228,7 @@ def publish_display_state(
         pipes=pipes,
         distance_mm=distance_mm,
         now=now,
+        rapid_play=rapid_play,
     )
 
     if display_process.publish(state):

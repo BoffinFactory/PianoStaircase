@@ -20,6 +20,8 @@ from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
+from piano_staircase_demo.pipes import PipeSnapshot
+
 
 SIMPLIFIED_CODE = """\
 distance = sensor.distance_mm
@@ -75,6 +77,14 @@ class DisplayState:
     code_stage: str = "sensor"
 
     special_text: str | None = None
+
+    pipe_mode_active: bool = False
+    pipe_mode_seconds_remaining: float | None = None
+    pipe_unlock_moves: int = 0
+    pipe_unlock_move_target: int = 5
+    pipe_unlock_reversals: int = 0
+    pipe_unlock_reversal_target: int = 3
+    pipe_snapshots: tuple[PipeSnapshot, ...] = ()
 
 
 class TerminalDisplay:
@@ -153,6 +163,17 @@ class TerminalDisplay:
 
         return len(cls._light_names(light_name))
 
+    @staticmethod
+    def _midi_note_name(midi_note: int) -> str:
+        """Return a compact note label such as F#4 for display use."""
+
+        names = (
+            "C", "C#", "D", "D#", "E", "F",
+            "F#", "G", "G#", "A", "A#", "B",
+        )
+        octave = midi_note // 12 - 1
+        return f"{names[midi_note % 12]}{octave}"
+
     def _build_header(
         self,
         state: DisplayState,
@@ -178,12 +199,21 @@ class TerminalDisplay:
             style="bold bright_cyan",
         )
 
-        title.append(
-            "  //  LIVE SYSTEM",
-            style="cyan",
-        )
+        if state.pipe_mode_active:
+            title.append(
+                "  //  PIPE PHYSICS MODE",
+                style="bold bright_magenta",
+            )
+        else:
+            title.append(
+                "  //  LIVE SYSTEM",
+                style="cyan",
+            )
 
-        if state.output_active:
+        if state.pipe_mode_active:
+            border_style = "bold bright_magenta"
+
+        elif state.output_active:
             light_style = self._light_style(
                 state.light_name
             )
@@ -375,7 +405,12 @@ class TerminalDisplay:
             distance,
         )
 
-        if state.trigger_state == "FIRED":
+        if state.trigger_state == "PIPE":
+            trigger = Text(
+                "● PIPE PHYSICS",
+                style="bold bright_magenta",
+            )
+        elif state.trigger_state == "FIRED":
             trigger = Text(
                 "● FIRED",
                 style="bold bright_cyan",
@@ -545,6 +580,197 @@ class TerminalDisplay:
             padding=(1, 1),
         )
 
+    def _build_pipe_equations_panel(
+        self,
+    ) -> Panel:
+        """Explain the simplified physics model used by procedural pipes."""
+
+        content = Group(
+            Text("ROCKING / IMPACT TIMING", style="bold bright_magenta"),
+            Text("Δt ≈ 4 √(Lθ / 3g)", style="bold bright_white"),
+            Text("θₙ = θ₀ · r²ⁿ", style="bright_white"),
+            Text("  L = pipe length   θ = rocking angle", style="dim"),
+            Text("  r = restitution   g = gravity", style="dim"),
+            Text(""),
+            Text("STRUCTURAL RESONANCE", style="bold bright_cyan"),
+            Text("f ∝ (1/L²) √(EI / μ)", style="bold bright_white"),
+            Text("I = π(D⁴ − d⁴) / 64", style="bright_white"),
+            Text("μ = ρA", style="bright_white"),
+            Text("A = π(D² − d²) / 4", style="bright_white"),
+            Text(""),
+            Text(
+                "Simplified educational rigid-body / beam model",
+                style="dim italic",
+            ),
+        )
+
+        return Panel(
+            content,
+            title="[bold bright_magenta]SIMPLIFIED PIPE PHYSICS[/]",
+            border_style="bright_magenta",
+            box=box.ROUNDED,
+            padding=(1, 2),
+        )
+
+    def _build_pipe_model_panel(
+        self,
+        state: DisplayState,
+    ) -> Panel:
+        """Show live physical parameters for the newest active pipe."""
+
+        if not state.pipe_snapshots:
+            content = Align.center(
+                Text(
+                    "No pipe is falling right now.\n\n"
+                    "Reverse direction to launch another.",
+                    style="bold bright_white",
+                    justify="center",
+                ),
+                vertical="middle",
+            )
+        else:
+            pipe = state.pipe_snapshots[-1]
+            inner_diameter_mm = max(
+                0.0,
+                pipe.outer_diameter_mm - 2.0 * pipe.wall_thickness_mm,
+            )
+
+            table = Table.grid(expand=True, padding=(0, 1))
+            table.add_column(style="dim bright_magenta", ratio=2)
+            table.add_column(ratio=3)
+
+            table.add_row(
+                "PIPE",
+                Text(f"#{pipe.pipe_id} / MIDI CH {pipe.channel}",
+                     style="bold white"),
+            )
+            table.add_row(
+                "MATERIAL",
+                Text(pipe.material.upper(), style="bold bright_white"),
+            )
+            table.add_row("LENGTH L", f"{pipe.length_m:.3f} m")
+            table.add_row("OUTER D", f"{pipe.outer_diameter_mm:.1f} mm")
+            table.add_row("INNER d", f"{inner_diameter_mm:.1f} mm")
+            table.add_row("WALL", f"{pipe.wall_thickness_mm:.2f} mm")
+            table.add_row("RESTITUTION r", f"{pipe.restitution:.3f}")
+            table.add_row(
+                "IMPACTS",
+                f"{pipe.impact_number}/{pipe.impact_count}",
+            )
+
+            if pipe.next_impact_seconds is None:
+                next_impact = "FINAL RING"
+            elif pipe.next_impact_seconds <= 0.005:
+                next_impact = "NOW"
+            else:
+                next_impact = f"{pipe.next_impact_seconds:.3f} s"
+
+            table.add_row("NEXT IMPACT", next_impact)
+            table.add_row(
+                "RESONANCES",
+                (
+                    f"{self._midi_note_name(pipe.low_resonance)} + "
+                    f"{self._midi_note_name(pipe.high_resonance)} "
+                    f"(MIDI {pipe.low_resonance}/{pipe.high_resonance})"
+                ),
+            )
+            table.add_row("SEED", str(pipe.seed))
+            content = table
+
+        return Panel(
+            content,
+            title="[bold bright_cyan]LIVE PIPE MODEL[/]",
+            border_style="bright_cyan",
+            box=box.ROUNDED,
+            padding=(1, 1),
+        )
+
+    def _build_pipe_list_panel(
+        self,
+        state: DisplayState,
+    ) -> Panel:
+        """Show every concurrently active procedural pipe."""
+
+        table = Table.grid(expand=True, padding=(0, 1))
+        table.add_column(style="dim bright_magenta")
+        table.add_column()
+        table.add_column(justify="right")
+
+        table.add_row("PIPE", "MATERIAL", "IMPACT")
+
+        if not state.pipe_snapshots:
+            table.add_row("—", "waiting for reversal", "—")
+        else:
+            for pipe in state.pipe_snapshots:
+                table.add_row(
+                    f"#{pipe.pipe_id}",
+                    pipe.material,
+                    f"{pipe.impact_number}/{pipe.impact_count}",
+                )
+
+        table.add_row("", "", "")
+        table.add_row(
+            "ACTIVE",
+            f"{len(state.pipe_snapshots)} / 6 simultaneous channels",
+            "",
+        )
+
+        return Panel(
+            table,
+            title="[bold bright_magenta]FALLING PIPES[/]",
+            border_style="bright_magenta",
+            box=box.ROUNDED,
+            padding=(1, 1),
+        )
+
+    def _build_pipe_control_panel(
+        self,
+        state: DisplayState,
+    ) -> Panel:
+        """Tell a visitor how continued motion controls Pipe Physics Mode."""
+
+        remaining = state.pipe_mode_seconds_remaining
+        countdown = (
+            f"{remaining:.1f} s"
+            if remaining is not None
+            else "—"
+        )
+
+        content = Group(
+            Align.center(
+                Text("YOU UNLOCKED PHYSICS MODE", style="bold bright_magenta")
+            ),
+            Text(""),
+            Align.center(
+                Text("KEEP MOVING YOUR HAND", style="bold bright_white")
+            ),
+            Align.center(
+                Text("Each direction reversal can drop another pipe.", style="white")
+            ),
+            Text(""),
+            Align.center(
+                Text("MODE ENDS WITHOUT MOVEMENT IN", style="dim")
+            ),
+            Align.center(
+                Text(countdown, style="bold bright_yellow")
+            ),
+            Text(""),
+            Align.center(
+                Text(
+                    "Every pipe randomizes size, material, timing, and pitch.",
+                    style="bright_cyan",
+                )
+            ),
+        )
+
+        return Panel(
+            Align.center(content, vertical="middle"),
+            title="[bold bright_yellow]KEEP PLAYING[/]",
+            border_style="bright_yellow",
+            box=box.ROUNDED,
+            padding=(1, 1),
+        )
+
     def _build_promo_panel(
         self,
     ) -> Panel:
@@ -623,7 +849,29 @@ class TerminalDisplay:
     ) -> Panel:
         """Build the attention-grabbing footer."""
 
-        if state.special_text is not None:
+        if state.pipe_mode_active:
+            remaining = state.pipe_mode_seconds_remaining
+            countdown = (
+                f"{remaining:.1f}s"
+                if remaining is not None
+                else "ACTIVE"
+            )
+            message = (
+                ">>> PIPE PHYSICS MODE  //  KEEP MOVING  //  "
+                f"{countdown} <<<"
+            )
+            style = "bold bright_magenta"
+
+        elif state.pipe_unlock_moves > 0:
+            message = (
+                ">>> RAPID MOTION  //  "
+                f"{state.pipe_unlock_moves}/{state.pipe_unlock_move_target} MOVES  •  "
+                f"{state.pipe_unlock_reversals}/{state.pipe_unlock_reversal_target} REVERSALS  "
+                "//  KEEP GOING <<<"
+            )
+            style = "bold bright_magenta"
+
+        elif state.special_text is not None:
             message = (
                 f">>> {state.special_text} <<<"
             )
@@ -747,28 +995,42 @@ class TerminalDisplay:
             )
         )
 
-        layout["code"].update(
-            self._build_code_panel(
-                state
+        if state.pipe_mode_active:
+            layout["code"].update(
+                self._build_pipe_equations_panel()
             )
-        )
-
-        layout["signal"].update(
-            self._build_signal_panel(
-                state
+            layout["signal"].update(
+                self._build_pipe_model_panel(state)
             )
-        )
-
-        layout["io"].update(
-            self._build_io_panel(
-                state,
-                now_seconds=now_seconds,
+            layout["io"].update(
+                self._build_pipe_list_panel(state)
             )
-        )
+            layout["promo"].update(
+                self._build_pipe_control_panel(state)
+            )
+        else:
+            layout["code"].update(
+                self._build_code_panel(
+                    state
+                )
+            )
 
-        layout["promo"].update(
-            self._build_promo_panel()
-        )
+            layout["signal"].update(
+                self._build_signal_panel(
+                    state
+                )
+            )
+
+            layout["io"].update(
+                self._build_io_panel(
+                    state,
+                    now_seconds=now_seconds,
+                )
+            )
+
+            layout["promo"].update(
+                self._build_promo_panel()
+            )
 
         layout["footer"].update(
             self._build_footer(
