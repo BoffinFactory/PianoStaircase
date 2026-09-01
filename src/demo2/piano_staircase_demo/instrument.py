@@ -9,6 +9,7 @@ from piano_staircase_demo.app_config import (
     KEYBOARD_EXIT_SAMPLES,
     PIPE_EVENT_NAME,
     RESPONSES,
+    ZONE_RESPONSES,
     ResponseMode,
 )
 from piano_staircase_demo.articulation import DistanceKeyboard, midi_note_name
@@ -37,6 +38,12 @@ def instrument_note_label(note: str | int) -> str:
     """Return a display-friendly name for an instrument note."""
 
     return note if isinstance(note, str) else midi_note_name(note)
+
+
+def instrument_notes_label(notes: tuple[str | int, ...]) -> str:
+    """Return a display-friendly label for one note or a small chord."""
+
+    return " + ".join(instrument_note_label(note) for note in notes)
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +81,9 @@ def start_ordinary_instrument_response(
 
     response_time = time.monotonic()
     runtime.light_cues = ()
+    runtime.held_light_names = ()
     runtime.held_light_name = response.light_name
+    runtime.zone_notes = ()
     runtime.instrument_note = note
     runtime.instrument_note_release_time = None
     runtime.last_interaction_time = response_time
@@ -166,10 +175,15 @@ def finish_instrument_interaction(
         message = f"NOTE OFF {instrument_note_label(note)}"
         runtime.last_response_time = time.monotonic()
 
+    for note in runtime.zone_notes:
+        piano.note_off(note)
+
     runtime.instrument_note = None
+    runtime.zone_notes = ()
     runtime.instrument_note_release_time = None
     runtime.instrument_engaged = False
     runtime.held_light_name = None
+    runtime.held_light_names = ()
     runtime.distance_exit_samples = 0
 
     update_lighting(runtime, channels=channels, now=time.monotonic())
@@ -203,6 +217,7 @@ def update_distance_instrument_note(
     # Lighting remains three broad bands even though the piano may expose
     # dozens of chromatic keys.
     if runtime.held_light_name != response.light_name:
+        runtime.held_light_names = ()
         runtime.held_light_name = response.light_name
         runtime.display_light_name = response.light_name
         update_lighting(runtime, channels=channels, now=time.monotonic())
@@ -352,7 +367,7 @@ def handle_presence_instrument_event(
 
 
 # ---------------------------------------------------------------------------
-# Normal three-zone Vibraphone behavior
+# Normal five-zone Vibraphone behavior
 # ---------------------------------------------------------------------------
 
 def service_zone_note_release(
@@ -361,17 +376,17 @@ def service_zone_note_release(
     runtime: RuntimeState,
     now: float,
 ) -> None:
-    """Release a zone strike after its configured NOTE ON duration."""
+    """Release the current zone strike/chord after its NOTE ON duration."""
 
     release_time = runtime.instrument_note_release_time
 
     if release_time is None or now < release_time:
         return
 
-    if runtime.instrument_note is not None:
-        piano.note_off(runtime.instrument_note)
+    for note in runtime.zone_notes:
+        piano.note_off(note)
 
-    runtime.instrument_note = None
+    runtime.zone_notes = ()
     runtime.instrument_note_release_time = None
 
 
@@ -384,38 +399,43 @@ def start_zone_response(
     runtime: RuntimeState,
     is_entry: bool,
 ) -> str:
-    """Strike one Vibraphone note and switch to one stable zone light."""
+    """Strike one five-zone Vibraphone response and hold its light rail(s)."""
 
-    response = RESPONSES[response_index]
+    response = ZONE_RESPONSES[response_index]
     response_time = time.monotonic()
 
     # If a visitor crosses a zone boundary before the previous 800 ms hold
-    # expires, release that key normally. The SoundFont tail may continue to
-    # decay; do not use all-sounds-off here.
-    if runtime.instrument_note is not None:
-        piano.note_off(runtime.instrument_note)
+    # expires, release every key from the previous response normally. The
+    # SoundFont release tails may continue to decay under the new response.
+    for note in runtime.zone_notes:
+        piano.note_off(note)
 
-    piano.note_on(response.note, velocity=args.piano_velocity)
+    for note in response.notes:
+        piano.note_on(note, velocity=args.piano_velocity)
 
-    runtime.instrument_note = response.note
+    runtime.instrument_note = None
+    runtime.zone_notes = response.notes
     runtime.instrument_note_release_time = (
         response_time + args.zone_note_hold
     )
     runtime.instrument_engaged = True
     runtime.light_cues = ()
-    runtime.held_light_name = response.light_name
+    runtime.held_light_name = None
+    runtime.held_light_names = response.light_names
 
     if is_entry:
         runtime.last_interaction_time = response_time
 
     runtime.last_response_time = response_time
-    runtime.display_note = response.note
-    runtime.display_light_name = response.light_name
+    runtime.display_note = instrument_notes_label(response.notes)
+    runtime.display_light_name = "+".join(response.light_names)
     runtime.display_special_text = None
 
     update_lighting(runtime, channels=channels, now=response_time)
 
-    return f"{response.note} -> {response.light_name.upper()} (ZONE)"
+    notes = instrument_notes_label(response.notes)
+    lights = " + ".join(name.upper() for name in response.light_names)
+    return f"{notes} -> {lights} (ZONE)"
 
 
 def finish_zone_interaction(
@@ -424,15 +444,17 @@ def finish_zone_interaction(
     channels: dict[str, LightingChannel],
     runtime: RuntimeState,
 ) -> str:
-    """Leave the entire zone range and turn the continuous light off."""
+    """Leave the entire zone range and turn all continuous lights off."""
 
-    if runtime.instrument_note is not None:
-        piano.note_off(runtime.instrument_note)
+    for note in runtime.zone_notes:
+        piano.note_off(note)
 
     runtime.instrument_note = None
+    runtime.zone_notes = ()
     runtime.instrument_note_release_time = None
     runtime.instrument_engaged = False
     runtime.held_light_name = None
+    runtime.held_light_names = ()
     runtime.light_cues = ()
     runtime.last_response_time = time.monotonic()
 
@@ -449,7 +471,7 @@ def handle_zone_instrument_sample(
     channels: dict[str, LightingChannel],
     runtime: RuntimeState,
 ) -> str | None:
-    """Process one valid distance reading for normal three-zone behavior."""
+    """Process one valid distance reading for normal five-zone behavior."""
 
     transition = tracker.update(distance_mm)
 

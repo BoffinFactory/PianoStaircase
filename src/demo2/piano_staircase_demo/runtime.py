@@ -40,15 +40,17 @@ class RuntimeState:
     active_channel: LightingChannel | None = None
     light_cues: tuple[LightCue, ...] = ()
 
-    # Instrument-owned lighting remains active until the physical interaction
-    # or zone ends rather than expiring as a timed LightCue.
+    # Legacy instrument paths hold one light at a time. Normal five-zone mode
+    # may instead hold one or two rails simultaneously.
     held_light_name: str | None = None
+    held_light_names: tuple[str, ...] = ()
 
     # A physical instrument interaction can remain engaged after a struck
-    # note has been released. This distinction is important for zone mode:
-    # the light remains on while the Vibraphone note decays naturally.
+    # note has been released. Legacy modes hold one note; normal five-zone
+    # mode may strike a one- or two-note Vibraphone response.
     instrument_engaged: bool = False
     instrument_note: str | int | None = None
+    zone_notes: tuple[str | int, ...] = ()
     instrument_note_release_time: float | None = None
 
     last_interaction_time: float | None = None

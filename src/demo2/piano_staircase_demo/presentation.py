@@ -72,6 +72,8 @@ def clear_expired_display_response(
         return
     if pipe_audio_active(pipes):
         return
+    if runtime.held_light_names:
+        return
     if runtime.active_channel is not None:
         return
 
@@ -109,7 +111,9 @@ def build_display_state(
         )
         trigger_state = "FIRED" if interaction_is_recent else "ARMED"
 
-    if runtime.active_channel is not None:
+    if runtime.held_light_names:
+        light_name = "+".join(runtime.held_light_names)
+    elif runtime.active_channel is not None:
         light_name = runtime.active_channel.name.lower()
     else:
         light_name = runtime.display_light_name
@@ -120,7 +124,10 @@ def build_display_state(
         response_mode=args.response_mode,
         note=runtime.display_note,
         light_name=light_name,
-        output_active=runtime.active_channel is not None,
+        output_active=(
+            bool(runtime.held_light_names)
+            or runtime.active_channel is not None
+        ),
         audio_active=(
             audio.is_playing
             or piano_audio_active(piano)

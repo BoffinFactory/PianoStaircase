@@ -186,6 +186,33 @@ def build_light_cues(
     return tuple(cues)
 
 
+def set_active_lights(
+    light_names: tuple[str, ...],
+    *,
+    channels: dict[str, LightingChannel],
+) -> None:
+    """Set exactly the requested staircase rails on simultaneously."""
+
+    desired_names = set(light_names)
+    unknown_names = desired_names - set(channels)
+
+    if unknown_names:
+        raise ValueError(
+            "Unknown lighting channel(s): "
+            + ", ".join(sorted(unknown_names))
+        )
+
+    for name, channel in channels.items():
+        target_percent = (
+            LIGHT_BRIGHTNESS_PERCENT
+            if name in desired_names
+            else 0
+        )
+
+        if channel.brightness != target_percent:
+            channel.set_brightness(target_percent)
+
+
 def switch_active_light(
     *,
     desired_channel: LightingChannel | None,
@@ -235,19 +262,45 @@ def update_lighting(
 ) -> None:
     """Advance held or timed lighting without blocking the sensor loop."""
 
-    if runtime.held_light_name is not None:
-        runtime.active_channel = switch_active_light(
-            desired_channel=channels[runtime.held_light_name],
-            active_channel=runtime.active_channel,
+    # Normal five-zone mode may hold two adjacent staircase rails at once.
+    if runtime.held_light_names:
+        set_active_lights(
+            runtime.held_light_names,
+            channels=channels,
+        )
+
+        runtime.active_channel = (
+            channels[runtime.held_light_names[0]]
+            if len(runtime.held_light_names) == 1
+            else None
         )
         return
 
-    runtime.active_channel = choose_active_light(
-        cues=runtime.light_cues,
-        channels=channels,
-        active_channel=runtime.active_channel,
-        now=now,
-    )
+    # Legacy instrument modes continue to hold one light exactly as before.
+    if runtime.held_light_name is not None:
+        set_active_lights(
+            (runtime.held_light_name,),
+            channels=channels,
+        )
+        runtime.active_channel = channels[runtime.held_light_name]
+        return
+
+    desired_light_name = None
+
+    for cue in runtime.light_cues:
+        if cue.start_time <= now < cue.end_time:
+            desired_light_name = cue.light_name
+            break
+
+    if desired_light_name is None:
+        set_active_lights((), channels=channels)
+        runtime.active_channel = None
+    else:
+        set_active_lights(
+            (desired_light_name,),
+            channels=channels,
+        )
+        runtime.active_channel = channels[desired_light_name]
 
     if runtime.light_cues and now >= runtime.light_cues[-1].end_time:
         runtime.light_cues = ()

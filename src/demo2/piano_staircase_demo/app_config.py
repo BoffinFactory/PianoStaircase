@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 
 from piano_staircase_demo.articulation import (
     DEFAULT_KEYBOARD_CENTER_NOTE,
@@ -38,7 +39,7 @@ NOTE_DURATION_SECONDS = 0.15
 # generated one-shot WAV path remains only for diagnostics/legacy testing.
 ARTICULATION = "instrument"
 
-# Three broad continuous approach zones are now the normal unattended mode.
+# Five nonlinear continuous approach zones are the normal unattended mode.
 RESPONSE_MODE = "zones"
 
 PIANO_GAIN = DEFAULT_GAIN
@@ -53,15 +54,33 @@ KEYBOARD_LOW_NOTE: int | None = None
 KEYBOARD_HIGH_NOTE: int | None = None
 KEYBOARD_EXIT_SAMPLES = 3
 
-# Normal three-zone approach interaction. The 1200 mm span divides into
-# nominal 400 mm bands:
+# ---------------------------------------------------------------------------
+# Normal five-zone staircase interaction
+# ---------------------------------------------------------------------------
 #
-#   50-450 mm     BLUE   / G4
-#   450-850 mm    YELLOW / E4
-#   850-1250 mm   GREEN  / C4
+# Keep the full practical 1250 mm detection envelope so a large nearby target
+# can attract attention at long range. The richer hand-controlled part of the
+# interaction is compressed closer to the sensor with explicit nonlinear
+# boundaries.
+#
+# Boundaries are ordered NEAREST -> FARTHEST:
+#
+#   50-250 mm     BLUE             / G4
+#   250-375 mm    YELLOW + BLUE    / E4 + G4
+#   375-500 mm    YELLOW           / E4
+#   500-650 mm    GREEN + YELLOW   / C4 + E4
+#   650-1250 mm   GREEN            / C4
+#
+# The command line can override all four boundaries for physical tuning.
 ZONE_NEAR_MM = 50
 ZONE_FAR_MM = 1250
-ZONE_HYSTERESIS_MM = 50
+ZONE_BOUNDARIES_MM = (
+    250,
+    375,
+    500,
+    650,
+)
+ZONE_HYSTERESIS_MM = 30
 ZONE_TRANSITION_SAMPLES = 3
 ZONE_EXIT_SAMPLES = 3
 ZONE_NOTE_HOLD_SECONDS = 0.8
@@ -69,17 +88,53 @@ ZONE_NOTE_HOLD_SECONDS = 0.8
 # General MIDI bank 0, program 11 = Vibraphone.
 ZONE_PROGRAM = 11
 
-# Normal operation has no periodic specials. The old periodic pipe path is
-# retained only for explicit development testing until Kayleigh Mode owns it.
+# Normal operation still has no periodic specials. The procedural pipe engine
+# remains available for development and will be connected to deliberate rapid
+# play separately rather than to an every-N-interactions counter.
 SPECIAL_EVERY = 0
 PIPE_EVENT_NAME = "pipes"
 PIPE_OVERRIDE_TRIGGERS = 4
 
 
+@dataclass(frozen=True)
+class ZoneResponse:
+    """One normal five-zone musical and lighting response."""
+
+    notes: tuple[str, ...]
+    light_names: tuple[str, ...]
+
+
+# Legacy cycle/random/distance behavior keeps the established single response
+# objects. Normal five-zone mode uses ZONE_RESPONSES below instead.
 RESPONSES = (
     InteractionResponse(note="C4", light_name="green"),
     InteractionResponse(note="E4", light_name="yellow"),
     InteractionResponse(note="G4", light_name="blue"),
+)
+
+# Ordered from farthest/lowest to nearest/highest so tracker zone indices map
+# directly into this tuple.
+ZONE_RESPONSES = (
+    ZoneResponse(
+        notes=("C4",),
+        light_names=("green",),
+    ),
+    ZoneResponse(
+        notes=("C4", "E4"),
+        light_names=("green", "yellow"),
+    ),
+    ZoneResponse(
+        notes=("E4",),
+        light_names=("yellow",),
+    ),
+    ZoneResponse(
+        notes=("E4", "G4"),
+        light_names=("yellow", "blue"),
+    ),
+    ZoneResponse(
+        notes=("G4",),
+        light_names=("blue",),
+    ),
 )
 
 SPECIAL_EVENT_NAMES = (PIPE_EVENT_NAME,)
@@ -182,13 +237,13 @@ def parse_args() -> argparse.Namespace:
         ),
     )
 
-    # Three-zone normal mode.
+    # Five-zone normal mode.
     parser.add_argument(
         "--zone-near-mm",
         type=int,
         default=ZONE_NEAR_MM,
         help=(
-            "Near edge of the three-zone interaction "
+            "Near edge of the five-zone interaction "
             f"(default: {ZONE_NEAR_MM} mm)."
         ),
     )
@@ -197,8 +252,19 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=ZONE_FAR_MM,
         help=(
-            "Far edge of the three-zone interaction "
+            "Far edge of the five-zone interaction "
             f"(default: {ZONE_FAR_MM} mm)."
+        ),
+    )
+    parser.add_argument(
+        "--zone-boundaries-mm",
+        type=int,
+        nargs=4,
+        default=ZONE_BOUNDARIES_MM,
+        metavar=("B1", "B2", "B3", "B4"),
+        help=(
+            "Four internal boundaries ordered nearest-to-farthest "
+            f"(default: {' '.join(str(value) for value in ZONE_BOUNDARIES_MM)} mm)."
         ),
     )
     parser.add_argument(
@@ -348,12 +414,12 @@ def create_distance_keyboard(args: argparse.Namespace) -> DistanceKeyboard:
 
 
 def create_zone_tracker(args: argparse.Namespace) -> DistanceZoneTracker:
-    """Create the configured stable three-zone tracker."""
+    """Create the configured stable five-zone tracker."""
 
     return DistanceZoneTracker(
         near_distance_mm=args.zone_near_mm,
         far_distance_mm=args.zone_far_mm,
-        zone_count=len(RESPONSES),
+        boundaries_mm=tuple(args.zone_boundaries_mm),
         hysteresis_mm=args.zone_hysteresis_mm,
         transition_samples=args.zone_samples,
         exit_samples=args.zone_exit_samples,
@@ -386,8 +452,8 @@ def validate_args(args: argparse.Namespace) -> None:
     if args.response_mode == "zones" and args.special_every > 0:
         raise SystemExit(
             "Periodic specials are intentionally disabled in normal zones "
-            "mode. Falling pipes are reserved for Kayleigh Mode; use a "
-            "legacy response mode for explicit pipe-development testing."
+            "mode. Procedural pipes will be connected separately to "
+            "deliberate rapid play."
         )
 
     try:
@@ -401,7 +467,7 @@ def validate_args(args: argparse.Namespace) -> None:
         create_zone_tracker(args)
     except ValueError as exc:
         raise SystemExit(
-            "Invalid three-zone configuration: " f"{exc}"
+            "Invalid five-zone configuration: " f"{exc}"
         ) from exc
 
 
@@ -415,6 +481,9 @@ def create_response_mode(args: argparse.Namespace) -> ResponseMode:
         return RandomMode(RESPONSES)
 
     if args.response_mode == "zones":
+        # The normal five-zone path is handled directly by the zone tracker
+        # and ZONE_RESPONSES. Keep a legacy DistanceMode object available so
+        # the rest of the application wiring does not need a special case.
         return DistanceMode(
             RESPONSES,
             minimum_distance_mm=args.zone_near_mm,
@@ -443,9 +512,9 @@ def print_startup_summary(args: argparse.Namespace) -> None:
 
     print("=== Piano Staircase Demo 2 ===")
     print()
-    print("C4 -> GREEN")
-    print("E4 -> YELLOW")
-    print("G4 -> BLUE")
+    print("Bottom: GREEN / C4")
+    print("Middle: YELLOW / E4")
+    print("Top:    BLUE / G4")
     print()
     print(f"Response mode: {args.response_mode}")
     print(f"Articulation:  {args.articulation}")
@@ -455,7 +524,7 @@ def print_startup_summary(args: argparse.Namespace) -> None:
 
         if args.response_mode == "zones":
             tracker = create_zone_tracker(args)
-            boundaries = sorted(tracker.boundaries_mm)
+            boundaries = tracker.boundaries_mm
             print("Instrument:     Vibraphone (GM program 11)")
             print(
                 "Zone range:     "
@@ -464,6 +533,7 @@ def print_startup_summary(args: argparse.Namespace) -> None:
             print(
                 "Zone bounds:    "
                 + ", ".join(f"{value} mm" for value in boundaries)
+                + " (near -> far)"
             )
             print(
                 "Zone stability: "
@@ -471,6 +541,14 @@ def print_startup_summary(args: argparse.Namespace) -> None:
                 f"{tracker.transition_samples} samples"
             )
             print(f"Note hold:      {args.zone_note_hold:g} s")
+            print("Far -> near:")
+
+            for response in ZONE_RESPONSES:
+                notes = " + ".join(response.notes)
+                lights = " + ".join(
+                    name.upper() for name in response.light_names
+                )
+                print(f"  {notes:<9} -> {lights}")
 
         elif args.response_mode == "distance":
             keyboard = create_distance_keyboard(args)

@@ -23,34 +23,38 @@ from rich.text import Text
 
 SIMPLIFIED_CODE = """\
 distance = sensor.distance_mm
+transition = zones.update(distance)
 
-if trigger.update(distance):
-    response = mode.next_response(distance)
-    lights[response.light_name].on()
-    audio.play(response.note)
+if transition:
+    response = zone_responses[transition.current_zone]
+    lights.set(response.light_names)
+    synth.play(response.notes)
 """
 
 
 CODE_STAGE_LINES = {
     "sensor": 1,
-    "trigger": 3,
-    "response": 4,
-    "lighting": 5,
-    "audio": 6,
+    "trigger": 2,
+    "response": 5,
+    "lighting": 6,
+    "audio": 7,
 }
 
 
 LIGHT_STYLES = {
     "green": "bright_green",
+    "green+yellow": "bright_yellow",
     "yellow": "bright_yellow",
+    "yellow+blue": "bright_blue",
     "blue": "bright_blue",
 }
 
 
+# Physical assignments for the final Demo 2 wiring.
 GPIO_NAMES = {
-    "green": "GPIO17",
+    "green": "GPIO22",
     "yellow": "GPIO27",
-    "blue": "GPIO22",
+    "blue": "GPIO17",
 }
 
 
@@ -87,18 +91,67 @@ class TerminalDisplay:
         )
 
     @staticmethod
+    def _light_names(
+        light_name: str | None,
+    ) -> tuple[str, ...]:
+        """Split one display light label into individual channel names."""
+
+        if light_name is None:
+            return ()
+
+        return tuple(
+            name.strip().lower()
+            for name in light_name.split("+")
+            if name.strip()
+        )
+
+    @classmethod
+    def _format_light_name(
+        cls,
+        light_name: str | None,
+    ) -> str:
+        """Return a visitor-facing label such as GREEN + YELLOW."""
+
+        names = cls._light_names(light_name)
+        return " + ".join(name.upper() for name in names)
+
+    @staticmethod
     def _light_style(
         light_name: str | None,
     ) -> str:
-        """Return the Rich style for a lighting channel."""
+        """Return the Rich style for one or two active lighting channels."""
 
         if light_name is None:
             return "white"
 
         return LIGHT_STYLES.get(
-            light_name,
+            light_name.lower(),
             "white",
         )
+
+    @classmethod
+    def _gpio_label(
+        cls,
+        light_name: str | None,
+    ) -> str:
+        """Return the GPIO label for one or two active staircase rails."""
+
+        labels = [
+            GPIO_NAMES[name]
+            for name in cls._light_names(light_name)
+            if name in GPIO_NAMES
+        ]
+
+        return " + ".join(labels) if labels else "—"
+
+    @classmethod
+    def _active_channel_count(
+        cls,
+        light_name: str | None,
+    ) -> int:
+        """Return the number of named lighting channels in a display state."""
+
+        return len(cls._light_names(light_name))
 
     def _build_header(
         self,
@@ -327,6 +380,11 @@ class TerminalDisplay:
                 "● FIRED",
                 style="bold bright_cyan",
             )
+        elif state.trigger_state == "HELD":
+            trigger = Text(
+                "● TRACKING",
+                style="bold bright_green",
+            )
         else:
             trigger = Text(
                 "○ ARMED",
@@ -366,9 +424,13 @@ class TerminalDisplay:
                 style=f"bold {light_style}",
             )
 
-            if state.light_name is not None:
+            formatted_lights = self._format_light_name(
+                state.light_name
+            )
+
+            if formatted_lights:
                 response_text.append(
-                    f" / {state.light_name.upper()}",
+                    f" / {formatted_lights}",
                     style=f"bold {light_style}",
                 )
 
@@ -377,13 +439,9 @@ class TerminalDisplay:
             response_text,
         )
 
-        if state.light_name is None:
-            gpio_name = "—"
-        else:
-            gpio_name = GPIO_NAMES.get(
-                state.light_name,
-                "—",
-            )
+        gpio_name = self._gpio_label(
+            state.light_name
+        )
 
         if state.output_active:
             pulse = (
@@ -403,8 +461,18 @@ class TerminalDisplay:
                 style=gpio_style,
             )
 
+            channel_count = self._active_channel_count(
+                state.light_name
+            )
+
+            transistor_label = (
+                "● ON"
+                if channel_count <= 1
+                else f"● {channel_count} CHANNELS ON"
+            )
+
             transistor_text = Text(
-                "● ON",
+                transistor_label,
                 style=gpio_style,
             )
 
@@ -562,7 +630,7 @@ class TerminalDisplay:
 
             style = "bold bright_magenta"
 
-        elif state.trigger_state == "FIRED":
+        elif state.trigger_state in ("FIRED", "HELD"):
             if (
                 state.distance_mm is not None
                 and state.note is not None
@@ -574,7 +642,7 @@ class TerminalDisplay:
                     "  →  "
                     f"{state.note}"
                     "  →  "
-                    f"{state.light_name.upper()}"
+                    f"{self._format_light_name(state.light_name)}"
                     " <<<"
                 )
             else:
