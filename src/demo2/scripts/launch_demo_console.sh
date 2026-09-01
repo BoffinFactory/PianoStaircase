@@ -152,15 +152,32 @@ while true; do
 	# Normal event configuration
 	# -----------------------------------------------------------------------
 	#
-	# Normal unattended behavior is the stable three-zone Vibraphone mode.
-	# Procedural pipes are explicitly disabled and remain development/Kayleigh
-	# machinery rather than a random visitor special.
+	# Final unattended exhibit behavior:
+	#
+	#   - nonlinear five-zone Vibraphone interaction;
+	#   - GREEN/C4 at the far/bottom end;
+	#   - BLUE/G4 at the near/top end;
+	#   - intermediate two-note / two-light zones;
+	#   - rapid back-and-forth movement unlocks Pipe Physics Mode;
+	#   - while Pipe Physics Mode is active, each accepted zone change
+	#     attempts to launch another falling pipe;
+	#   - pipe lighting animates a top-to-bottom fall and bounce;
+	#   - Pipe Physics Mode returns to normal after five seconds without an
+	#     accepted zone movement.
+	#
+	# These values are stated explicitly here so boot behavior remains stable
+	# even if application defaults are adjusted later during development.
 	#
 
 	./scripts/run_demo.py \
 		--display \
 		--articulation instrument \
 		--response-mode zones \
+		--pipe-window 3.0 \
+		--pipe-moves 5 \
+		--pipe-reversals 3 \
+		--pipe-idle-timeout 5.0 \
+		--pipe-spawn-cooldown 0.0 \
 		--special-every 0
 
 	exit_status=$?
